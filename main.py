@@ -10,7 +10,8 @@ from keep_alive import start_server
 # Usamos os.getenv para leer las variables de Render
 API_ID = int(os.getenv('API_ID', '32541501'))
 API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f')
-SESSION_STRING = os.getenv('SESSION_STRING') # ¡Aquí va el texto largo!
+SESSION_STRING = os.getenv('1AZWarzoBuzlbMRhlIKbaQd_t7RFVYlX9a_akPMrZSRFLmGRTcvdy0lTjP3UNReL7Es3uMi0UzkYeX7bHvWlwkquV_L686vIEcLlp_JJUdzKw-5DyZsh4KMWilIcc8IXZzAMDlP3wBHRBJMcwlPjz6dY_crXKnrfCcaEhU8NwrmoPsfem9mJP1a9MeNyf6ENtlCOs-GymI7wsmyQyTrUsOHAIWPd8qvu9naIFZBX1hP2dTakpd7zK_OZuPLr18hIjNBngbNVP4X8xUK1VbCBlvX9z6_tPlQeuk2GG73evio93cHSWt5oT0modrFP_2boRzhslKAkZeLlzFdNoJUUxLcndvx2hzhw=
+')
 
 # Configuración del bot
 TARGET_GROUP = 'myConfigCloud'
