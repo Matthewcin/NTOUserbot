@@ -1,217 +1,203 @@
 import os
 import asyncio
+import logging
+import asyncpg
+import requests
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from keep_alive import start_server
 
 # ==========================================
-# ⚙️ CONFIGURACIÓN (VARIABLES DE ENTORNO)
+# ⚙️ CONFIGURATION & SECRETS
 # ==========================================
+# Telegram Config
 API_ID = int(os.getenv('API_ID', '32541501'))
-API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f'))
-SESSION_STRING = os.getenv('SESSION_STRING') 
+API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f')
+SESSION_STRING = os.getenv('SESSION_STRING')
 
-# TU CONFIGURACIÓN
+# Database Config (Neon.tech)
+DB_URL = os.getenv('DB_URL') 
+# Put your full postgres url in Render Environment Variables! 
+# Example: postgresql://neondb_owner:npg_Nd2D8...@ep-flat...aws.neon.tech/neondb?sslmode=require
+
+# Payment Config (Oxapay - Sign up at oxapay.com to get a Key)
+# It is the best low-fee (0.4%) option for Telegram.
+OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'Paste_Your_Oxapay_Merchant_Key_Here')
+
+# Bot Config
 TARGET_GROUP = 'myConfigCloud'
-MY_USER_LINK = 'https://t.me/Virusnto' # Tu usuario para que te hagan clic
-STICKER_WELCOME = 'sticker.tgs' 
+MY_USER_LINK = 'https://t.me/Virusnto'
+OWNER_ID = 934491540 # Replace with your numeric ID
 
 # ==========================================
-# 🚀 INICIO DEL CLIENTE
+# 🔌 DATABASE MANAGER
+# ==========================================
+class Database:
+    def __init__(self, db_url):
+        self.db_url = db_url
+        self.pool = None
+
+    async def connect(self):
+        if not self.pool:
+            self.pool = await asyncpg.create_pool(self.db_url)
+            print("✅ Connected to Neon Database")
+
+    async def get_product(self, key):
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow("SELECT * FROM products WHERE key_name = $1", key)
+
+    async def create_order(self, order_id, user_id, product_key, amount):
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO orders (order_id, user_id, product_key, amount_usd) VALUES ($1, $2, $3, $4)",
+                order_id, user_id, product_key, amount
+            )
+
+    async def get_all_products(self):
+        async with self.pool.acquire() as conn:
+            return await conn.fetch("SELECT * FROM products")
+
+db = Database(DB_URL)
+
+# ==========================================
+# 🚀 INITIALIZATION
 # ==========================================
 if not SESSION_STRING:
-    print("❌ Error: Falta SESSION_STRING")
+    print("❌ Error: SESSION_STRING missing.")
     exit()
 
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 # ==========================================
-# 🛠️ FUNCIONES DE AYUDA
+# 💸 PAYMENT LOGIC (Oxapay)
 # ==========================================
-async def check_permissions(event):
-    """Verifica si el comando se usa en Privado o en el Grupo permitido."""
+def create_crypto_payment(amount, order_id, email="customer@mail.com"):
+    """Creates a payment link via Oxapay"""
+    url = "https://api.oxapay.com/merchants/request"
+    data = {
+        "merchant": OXAPAY_KEY,
+        "amount": amount,
+        "currency": "USDT", # You can change to LTC, BTC, etc.
+        "life_time": 60, # 60 minutes to pay
+        "fee_paid_by_payer": 0,
+        "return_url": "https://t.me/Virusnto",
+        "description": f"Order {order_id}",
+        "order_id": order_id
+    }
+    try:
+        response = requests.post(url, json=data).json()
+        if response.get("result") == 100:
+            return response.get("pay_url")
+        else:
+            print(f"Payment Error: {response}")
+            return None
+    except Exception as e:
+        print(f"API Error: {e}")
+        return None
+
+# ==========================================
+# 🤖 COMMANDS
+# ==========================================
+
+async def can_run_command(event):
+    if event.out: return True
     chat = await event.get_chat()
     es_privado = event.is_private
     es_mi_grupo = (getattr(chat, 'username', '') == TARGET_GROUP)
     return es_privado or es_mi_grupo
 
-# ==========================================
-# 👋 BIENVENIDA AUTOMÁTICA
-# ==========================================
-@client.on(events.ChatAction)
-async def welcome_handler(event):
-    if event.user_joined or event.user_added:
-        chat = await event.get_chat()
-        if getattr(chat, 'username', '') == TARGET_GROUP:
-            user = await event.get_user()
-            if user.is_self or user.bot: return
-            
-            print(f"👤 {user.first_name} entró. Esperando 3 min...")
-            await asyncio.sleep(180)
-            
-            try:
-                msg = (
-                    f"¡Hola {user.first_name}! 👋\n"
-                    "Bienvenido a **myConfigCloud**.\n\n"
-                    "Usa los siguientes comandos para interactuar:\n"
-                    "🔹 `.list` - Ver catálogo\n"
-                    "🔹 `.buy` - Comprar acceso\n"
-                    "🔹 `.info` - Más detalles\n\n"
-                    f"💬 **[CONTACTAR DUEÑO]({MY_USER_LINK})**"
-                )
-                if os.path.exists(STICKER_WELCOME):
-                    await client.send_file(user.id, STICKER_WELCOME)
-                await client.send_message(user.id, msg)
-            except Exception:
-                pass
-
-# ==========================================
-# 🟢 COMANDO: .STATUS
-# ==========================================
-@client.on(events.NewMessage(pattern=r'\.status'))
-async def cmd_status(event):
-    if not await check_permissions(event): return
-    
-    await event.reply(
-        "🟢 **SYSTEM ONLINE**\n"
-        "━━━━━━━━━━━━━━━━\n"
-        "⚡ **Latency:** 24ms\n"
-        "🛡️ **Security:** Encrypted\n"
-        "👤 **Owner:** Online\n"
-        "━━━━━━━━━━━━━━━━"
-    )
-
-# ==========================================
-# 📂 COMANDO: .LIST / .CONFIGS / .CLOUD
-# ==========================================
-@client.on(events.NewMessage(pattern=r'\.(list|configs|cloud)'))
+@client.on(events.NewMessage(pattern=r'\.list'))
 async def cmd_list(event):
-    if not await check_permissions(event): return
+    if not await can_run_command(event): return
 
-    await event.reply(
-        "📂 **CATÁLOGO DISPONIBLE**\n\n"
-        "Selecciona un producto para ver detalles:\n\n"
-        "1️⃣ **EBOOK (Guía Exclusiva)**\n"
-        "   └─ *Precio: $75 USD*\n"
-        "   └─ Comando: `.info ebook`\n\n"
-        "2️⃣ **CONFIG CLOUD (OpenBullet)**\n"
-        "   └─ *Acceso a configs privadas*\n"
-        "   └─ Comando: `.info cloud`\n\n"
-        "👇 **ACCIONES RÁPIDAS**\n"
-        f"💳 **[COMPRAR AHORA]({MY_USER_LINK})**"
-    )
-
-# ==========================================
-# ℹ️ COMANDO: .INFO [ARGUMENTO]
-# ==========================================
-@client.on(events.NewMessage(pattern=r'\.info(?:\s+(.*))?'))
-async def cmd_info(event):
-    if not await check_permissions(event): return
+    products = await db.get_all_products()
     
-    arg = event.pattern_match.group(1) # Captura lo que escriben después de .info
-    
-    if not arg:
-        # Si no ponen argumento, mostramos ayuda
-        await event.reply("ℹ️ **Uso:** `.info ebook` o `.info cloud`")
-        return
-
-    arg = arg.lower()
-
-    if "ebook" in arg:
-        await event.reply(
-            "📘 **INFO: EBOOK EXCLUSIVO**\n"
-            "━━━━━━━━━━━━━━━━\n"
-            "Aprende a crear tus propias configs y bots.\n\n"
-            "✅ **Contenido:**\n"
-            "• Introducción a OpenBullet\n"
-            "• Bypassing de seguridad\n"
-            "• Captura de APIs\n\n"
-            "💰 **Precio:** $75 USD (Lifetime)\n"
-            f"👉 **[COMPRAR EBOOK]({MY_USER_LINK})**"
-        )
-    elif "cloud" in arg or "config" in arg:
-        await event.reply(
-            "☁️ **INFO: CONFIG CLOUD**\n"
-            "━━━━━━━━━━━━━━━━\n"
-            "Acceso a mi nube privada de configuraciones.\n\n"
-            "✅ **Características:**\n"
-            "• Actualizaciones diarias\n"
-            "• +50 Sitios soportados\n"
-            "• Soporte 24/7\n\n"
-            f"👉 **[SOLICITAR ACCESO]({MY_USER_LINK})**"
-        )
+    msg = "📂 **CATALOG**\n\n"
+    if not products:
+        msg += "No products found in Database."
     else:
-        await event.reply("❌ Producto no encontrado. Usa `.list` para ver el catálogo.")
+        for p in products:
+            msg += f"🔹 **{p['display_name']}**\n"
+            msg += f"   └─ Price: ${p['price_usd']} USD\n"
+            msg += f"   └─ Key: `{p['key_name']}`\n\n"
+    
+    msg += "ℹ️ Use `.buy [key]` to purchase instant access."
+    await event.reply(msg)
 
-# ==========================================
-# 💳 COMANDO: .BUY [ARGUMENTO]
-# ==========================================
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
-    if not await check_permissions(event): return
-
-    arg = event.pattern_match.group(1)
+    if not await can_run_command(event): return
     
-    if not arg:
-        await event.reply(
-            "💳 **¿QUÉ DESEAS COMPRAR?**\n\n"
-            "Escribe el comando específico:\n"
-            "• `.buy ebook` ($75 USD)\n"
-            "• `.buy cloud` (Consultar)\n\n"
-            "O contáctame directo:\n"
-            f"👤 **[HABLAR CONMIGO]({MY_USER_LINK})**"
-        )
+    key = event.pattern_match.group(1)
+    if not key:
+        await event.reply("🛒 **Usage:** `.buy ebook` (or product key)")
+        return
+    
+    product = await db.get_product(key.lower())
+    
+    if not product:
+        await event.reply("❌ Product not found. Check `.list`.")
         return
 
-    arg = arg.lower()
-    
-    if "ebook" in arg:
+    # Generate Order ID
+    import uuid
+    order_id = str(uuid.uuid4())[:8]
+    user_id = event.sender_id
+    price = float(product['price_usd'])
+
+    # Create Payment Link
+    # Note: If you don't have Oxapay key yet, this will fail.
+    # For now, we simulate a link or use manual check.
+    if OXAPAY_KEY == "Paste_Your_Oxapay_Merchant_Key_Here":
+        # Fallback if no API key configured
         await event.reply(
-            "💳 **PROCESO DE COMPRA: EBOOK**\n"
-            "━━━━━━━━━━━━━━━━\n"
-            "💵 **Total:** $75 USD\n"
-            "🪙 **Métodos:** USDT (TRC20), BTC, LTC\n\n"
-            "⚠️ **Nota:** Para evitar estafas, no envíes dinero sin confirmación.\n\n"
-            f"📩 **[ENVIAR MENSAJE PARA PAGAR]({MY_USER_LINK})**"
+            f"💳 **MANUAL PURCHASE: {product['display_name']}**\n"
+            f"💵 **Price:** ${price} USD\n\n"
+            f"Please send exact amount to my wallet and contact me with ID `{order_id}`:\n"
+            f"👤 **[CONTACT OWNER]({MY_USER_LINK})**"
         )
-    elif "cloud" in arg:
-        await event.reply(
-            "💳 **PROCESO DE COMPRA: CLOUD**\n"
-            "━━━━━━━━━━━━━━━━\n"
-            "El acceso a la Cloud es limitado.\n\n"
-            f"📩 **[CONSULTAR DISPONIBILIDAD]({MY_USER_LINK})**"
-        )
+    else:
+        pay_url = create_crypto_payment(price, order_id)
+        if pay_url:
+            await db.create_order(order_id, user_id, key, price)
+            await event.reply(
+                f"💳 **INVOICE GENERATED**\n"
+                f"📦 **Item:** {product['display_name']}\n"
+                f"💵 **Total:** ${price} USDT\n\n"
+                f"👉 **[CLICK HERE TO PAY]({pay_url})**\n\n"
+                f"⏳ Access will be sent automatically upon confirmation."
+            )
+        else:
+            await event.reply("❌ Error generating invoice. Please contact admin.")
 
 # ==========================================
-# 📝 COMANDO: .REQUEST [ACCOUNT/CONFIG]
+# 👮‍♂️ ADMIN COMMANDS (DB MANAGEMENT)
 # ==========================================
-@client.on(events.NewMessage(pattern=r'\.request(?:\s+(.*))?'))
-async def cmd_request(event):
-    if not await check_permissions(event): return
-
-    arg = event.pattern_match.group(1)
-    sender = await event.get_sender()
-    
-    if not arg:
-        await event.reply("📝 **Uso:** `.request config netflix` o `.request account amazon`")
-        return
-
-    # Logica visual: Confirmamos al usuario que recibimos la petición
-    # Como es tu cuenta personal, tú verás el mensaje original en tu chat de todos modos.
-    await event.reply(
-        f"✅ **SOLICITUD RECIBIDA**\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"👤 **Usuario:** {sender.first_name}\n"
-        f"📦 **Pedido:** {arg}\n\n"
-        "He anotado tu solicitud. Si es viable, la añadiré a la Cloud pronto."
-    )
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.dbadd\s+(.*)'))
+async def admin_db_add(event):
+    # Format: .dbadd key|Display Name|100.00|Desc|Link
+    try:
+        args = event.pattern_match.group(1).split('|')
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO products (key_name, display_name, price_usd, description, file_url) VALUES ($1, $2, $3, $4, $5)",
+                args[0].strip(), args[1].strip(), float(args[2].strip()), args[3].strip(), args[4].strip()
+            )
+        await event.edit(f"✅ Saved to NeonDB: {args[0]}")
+    except Exception as e:
+        await event.edit(f"❌ DB Error: {e}")
 
 # ==========================================
-# 🏁 EJECUCIÓN
+# 🏁 RUN
 # ==========================================
-if __name__ == '__main__':
-    print("🌍 Iniciando Web Server...")
+async def main():
+    print("🌍 Web Server Online...")
     start_server()
-    print("🚀 Userbot Activo y escuchando comandos...")
-    client.start()
-    client.run_until_disconnected()
+    await db.connect() # Connect to Neon
+    print("🚀 Userbot Active...")
+    await client.start()
+    await client.run_until_disconnected()
+
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
