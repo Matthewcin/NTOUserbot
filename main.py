@@ -6,7 +6,7 @@ import os
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-# Imports locales
+# Imports locales (si usas estructura modular, esto reemplazaría main.py y database.py)
 import config
 from database import db
 from payments import create_invoice
@@ -31,7 +31,121 @@ async def can_run_command(event):
     return es_privado or es_mi_grupo
 
 # ============================
-# 👋 WELCOME HANDLER (AUTOMATIC)
+# 🔌 CLASE DATABASE (INTEGRADA PARA EVITAR ERRORES)
+# ============================
+# He movido la lógica de DB aquí dentro para asegurar que tengas la versión corregida
+# Si usas archivos separados, actualiza tu archivo database.py con esta lógica.
+import asyncpg
+class DatabaseInternal:
+    def __init__(self, db_url):
+        self.db_url = db_url
+        self.pool = None
+
+    async def connect(self):
+        if not self.pool:
+            try:
+                url_clean = self.db_url.split('?')[0]
+                self.pool = await asyncpg.create_pool(url_clean, ssl='require')
+                await self.init_tables()
+            except Exception as e:
+                print(f"❌ CRITICAL DB ERROR: {e}")
+
+    async def init_tables(self):
+        async with self.pool.acquire() as conn:
+            # Tabla Productos
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id SERIAL PRIMARY KEY,
+                    key_name TEXT UNIQUE NOT NULL,
+                    display_name TEXT NOT NULL,
+                    price_usd NUMERIC(10, 2) NOT NULL,
+                    description TEXT,
+                    file_url TEXT
+                );
+            """)
+            # Tabla Ordenes (Definida como TEXT para evitar errores de tipo)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    order_id TEXT PRIMARY KEY,
+                    oxapay_track_id TEXT, 
+                    user_id BIGINT,
+                    product_key TEXT,
+                    amount_usd NUMERIC(10, 2),
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            # Tabla Settings
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key_name TEXT PRIMARY KEY,
+                    value TEXT
+                );
+            """)
+
+    async def get_product(self, key):
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow("SELECT * FROM products WHERE key_name = $1", key)
+
+    async def get_all_products(self):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            return await conn.fetch("SELECT * FROM products")
+
+    async def create_order(self, order_id, track_id, user_id, product_key, amount):
+        if not self.pool: return
+        
+        # 👇 FIX CRÍTICO: Convertimos a String explícitamente
+        track_id_str = str(track_id)
+        
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO orders (order_id, oxapay_track_id, user_id, product_key, amount_usd) 
+                   VALUES ($1, $2, $3, $4, $5)""",
+                order_id, track_id_str, user_id, product_key, amount
+            )
+
+    async def update_product(self, key, field, value):
+        if not self.pool: return False
+        valid_fields = {'price': 'price_usd', 'name': 'display_name', 'desc': 'description', 'link': 'file_url'}
+        if field not in valid_fields: return False
+        column = valid_fields[field]
+        if field == 'price':
+            try: value = float(value)
+            except: return False
+        async with self.pool.acquire() as conn:
+            query = f"UPDATE products SET {column} = $1 WHERE key_name = $2"
+            res = await conn.execute(query, value, key)
+            return res != "UPDATE 0"
+
+    async def delete_product(self, key):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            res = await conn.execute("DELETE FROM products WHERE key_name = $1", key)
+            return res != "DELETE 0"
+
+    async def get_setting(self, key):
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT value FROM settings WHERE key_name = $1", key)
+            return row['value'] if row else None
+
+    async def set_setting(self, key, value):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO settings (key_name, value) VALUES ($1, $2)
+                ON CONFLICT (key_name) DO UPDATE SET value = $2
+            """, key, value)
+            return True
+
+# Sobrescribimos la variable db localmente para usar esta versión corregida
+db = DatabaseInternal(config.DB_URL)
+
+
+# ============================
+# 👋 WELCOME HANDLER
 # ============================
 @client.on(events.ChatAction)
 async def welcome_handler(event):
@@ -42,44 +156,34 @@ async def welcome_handler(event):
             user = await event.get_user()
             if user.is_self or user.bot: return
             
-            print(f"👤 New User: {user.first_name}. Waiting 60s to send welcome...")
-            
-            # ⏳ ESPERA DE 1 MINUTO
+            print(f"👤 New User: {user.first_name}. Waiting 60s...")
             await asyncio.sleep(60)
             
             try:
-                # 1. Sticker
                 if os.path.exists(STICKER_WELCOME):
                     await client.send_file(chat, STICKER_WELCOME)
                 
-                # 2. Mensaje 1
                 await asyncio.sleep(2)
                 await client.send_message(chat, MSG_WELCOME_1)
                 
-                # 3. Mensaje 2
                 await asyncio.sleep(2)
                 await client.send_message(chat, MSG_WELCOME_2)
-                
             except Exception as e:
                 print(f"❌ Error sending welcome: {e}")
 
 # ============================
-# 👋 MANUAL WELCOME TEST (.hello)
+# 👋 MANUAL WELCOME (.hello)
 # ============================
 @client.on(events.NewMessage(pattern=r'\.hello'))
 async def cmd_hello(event):
     if not await can_run_command(event): return
-    
-    # Este comando ejecuta la secuencia INMEDIATAMENTE para testear
     chat = await event.get_chat()
-    await event.delete() # Borra el comando .hello
+    await event.delete()
     
     if os.path.exists(STICKER_WELCOME):
         await client.send_file(chat, STICKER_WELCOME)
-    
     await asyncio.sleep(1)
     await client.send_message(chat, MSG_WELCOME_1)
-    
     await asyncio.sleep(1)
     await client.send_message(chat, MSG_WELCOME_2)
 
@@ -92,7 +196,7 @@ async def cmd_status(event):
 
     args = event.pattern_match.group(1)
 
-    # ADMIN EDIT LOGIC (Hidden here or separate)
+    # ADMIN EDIT LOGIC
     if args and args.startswith('edit') and event.out:
         parts = args.split()
         if len(parts) < 3: return await event.edit("❌ Usage: `.status edit svb [url]`")
@@ -106,7 +210,7 @@ async def cmd_status(event):
             await event.edit(f"✅ **OB2 URL Updated:**\n`{new_url}`")
         return
 
-    # PUBLIC STATUS CHECK
+    # PUBLIC STATUS
     if not db.pool: return await event.reply("❌ Database Disconnected")
     
     url_svb = await db.get_setting('url_svb')
@@ -130,8 +234,12 @@ async def cmd_status(event):
     status_svb = check_server(url_svb, "SVB")
     status_ob2 = check_server(url_ob2, "OB2")
 
-    # Usamos HTML para negritas <b> y formato
     final_msg = (
+        "📊 <b>SYSTEM STATUS REPORT</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🤖 <b>Bot System:</b> ✅ Online\n"
+        f"🛡️ <b>Database:</b> ✅ Connected\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
         f"☁️ <b>SVB Cloud:</b> {status_svb}\n"
         f"☁️ <b>OB2 Cloud:</b> {status_ob2}\n"
     )
@@ -199,7 +307,7 @@ async def cmd_request(event):
     await event.reply(f"✅ <b>Request Received:</b> {arg}", parse_mode='html')
 
 # ============================
-# 💳 BUY COMMAND (HTML FIX)
+# 💳 BUY COMMAND (HTML + DB STRING FIX)
 # ============================
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
@@ -209,7 +317,6 @@ async def cmd_buy(event):
     key_raw = event.pattern_match.group(1)
     key = key_raw.strip() if key_raw else None
     
-    # 1. MENU MODE
     if not key:
         products = await db.get_all_products()
         msg = "🛒 <b>PURCHASE MENU</b>\n\n"
@@ -220,7 +327,6 @@ async def cmd_buy(event):
             msg += "⚠️ No products available."
         return await event.reply(msg, parse_mode='html')
 
-    # 2. INVOICE MODE
     try:
         product = await db.get_product(key.lower())
         if not product: return await event.reply("❌ Product not found.")
@@ -235,7 +341,6 @@ async def cmd_buy(event):
         if invoice:
             await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
             
-            # 👇 AQUI USAMOS HTML <a href> PARA QUE EL LINK FUNCIONE SIEMPRE
             link_html = f"<a href='{invoice['url']}'>🔗 PAY NOW - CLICK HERE</a>"
             
             await msg_wait.edit(
@@ -332,7 +437,7 @@ async def main():
     await db.connect() 
     print("🚀 Telegram Login...")
     await client.start()
-    try: await client.send_message("me", "🚀 **SYSTEM UPDATED (HTML Mode)**")
+    try: await client.send_message("me", "🚀 **SYSTEM UPDATED (v6.1)**")
     except: pass
     await client.run_until_disconnected()
 
