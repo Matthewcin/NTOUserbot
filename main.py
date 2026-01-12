@@ -224,11 +224,6 @@ async def cmd_status(event):
     status_ob2 = check_server(url_ob2)
 
     final_msg = (
-        "📊 <b>SYSTEM STATUS</b>\n"
-        "━━━━━━━━━━━━━━━━\n"
-        f"🤖 <b>Bot System:</b> ✅ Online\n"
-        f"🛡️ <b>Database:</b> ✅ Connected\n"
-        "━━━━━━━━━━━━━━━━\n"
         f"☁️ <b>SVB Cloud:</b> {status_svb}\n"
         f"☁️ <b>OB2 Cloud:</b> {status_ob2}\n"
     )
@@ -246,7 +241,7 @@ async def cmd_help(event):
 async def cmd_cmds(event):
     if not await can_run_command(event): return
     msg = (
-        "🤖 <b>COMMAND LIST</b>\n━━━━━━━━━━━━━━━━\n"
+        "<b>COMMAND LIST</b>\n━━━━━━━━━━━━━━━━\n"
         "🔹 <code>.list</code> » View Catalog\n"
         "🔹 <code>.info [item]</code> » Details\n"
         "🔹 <code>.buy</code> » Purchase Menu\n"
