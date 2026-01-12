@@ -21,13 +21,13 @@ TARGET_GROUP = 'myConfigCloud'
 MY_USER_LINK = 'https://t.me/Virusnto'
 
 # ==========================================
-# 🌐 WEB SERVER
+# 🌐 WEB SERVER (Para Render)
 # ==========================================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "✅ Bot Online. Escribe .list en Telegram."
+    return "✅ Bot Online. Tablas de DB verificadas."
 
 def run_server():
     port = int(os.environ.get("PORT", 8080))
@@ -38,7 +38,7 @@ def start_server():
     t.start()
 
 # ==========================================
-# 🔌 DATABASE (CORREGIDA PARA NEON)
+# 🔌 DATABASE (Auto-Creación + Neon Fix)
 # ==========================================
 class Database:
     def __init__(self, db_url):
@@ -48,16 +48,48 @@ class Database:
     async def connect(self):
         if not self.pool:
             try:
-                # 🛠️ CORRECCIÓN: Limpiamos la URL para asyncpg
-                # asyncpg no soporta 'sslmode' ni 'channel_binding' en el string
-                url_limpia = self.db_url.split('?')[0] 
+                # 1. Limpiamos la URL para evitar error con asyncpg y Neon
+                # Quitamos '?sslmode=require...' que asyncpg no soporta en el string
+                url_limpia = self.db_url.split('?')[0]
                 
-                # Forzamos SSL 'require' que es lo que pide Neon
+                # 2. Conectamos forzando SSL
                 self.pool = await asyncpg.create_pool(url_limpia, ssl='require')
-                print("✅ Neon DB Conectada Exitosamente")
+                print("✅ Neon DB Conectada Correctamente")
+                
+                # 3. CREACIÓN AUTOMÁTICA DE TABLAS
+                await self.init_tables()
+                
             except Exception as e:
                 print(f"❌ Error CRÍTICO conectando a DB: {e}")
-                print("⚠️ Verifica que la variable DB_URL en Render sea correcta.")
+
+    async def init_tables(self):
+        """Crea las tablas si no existen (Auto-Reparación)"""
+        async with self.pool.acquire() as conn:
+            # Tabla Productos
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id SERIAL PRIMARY KEY,
+                    key_name TEXT UNIQUE NOT NULL,
+                    display_name TEXT NOT NULL,
+                    price_usd NUMERIC(10, 2) NOT NULL,
+                    description TEXT,
+                    file_url TEXT
+                );
+            """)
+            
+            # Tabla Ordenes
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    order_id TEXT PRIMARY KEY,
+                    oxapay_track_id BIGINT,
+                    user_id BIGINT,
+                    product_key TEXT,
+                    amount_usd NUMERIC(10, 2),
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            print("✅ Tablas 'products' y 'orders' verificadas/creadas.")
 
     async def get_product(self, key):
         if not self.pool: return None
@@ -81,7 +113,7 @@ class Database:
 db = Database(DB_URL)
 
 # ==========================================
-# 💸 OXAPAY
+# 💸 OXAPAY API
 # ==========================================
 def create_invoice(amount, order_id, description):
     url = "https://api.oxapay.com/merchants/request"
@@ -128,7 +160,7 @@ async def cmd_info(event):
     if not arg:
         return await event.reply("ℹ️ **Uso:** `.info ebook`")
 
-    if not db.pool: return await event.reply("❌ Error: Base de datos desconectada.")
+    if not db.pool: return await event.reply("❌ Error: DB desconectada.")
 
     product = await db.get_product(arg.lower())
     if product:
@@ -137,7 +169,7 @@ async def cmd_info(event):
             f"━━━━━━━━━━━━━━━━\n"
             f"📝 {product['description']}\n\n"
             f"💵 **Precio:** ${product['price_usd']} USD\n"
-            f"🛒 Comprar: `.buy {product['key_name']}`"
+            f"🛒 Compra escribiendo: `.buy {product['key_name']}`"
         )
     else:
         await event.reply("❌ Producto no encontrado.")
@@ -146,7 +178,7 @@ async def cmd_info(event):
 @client.on(events.NewMessage(pattern=r'\.list'))
 async def cmd_list(event):
     if not await can_run_command(event): return
-    if not db.pool: return await event.reply("❌ Error: Base de datos desconectada.")
+    if not db.pool: return await event.reply("❌ Error: DB desconectada.")
     
     products = await db.get_all_products()
     msg = "📂 **CATÁLOGO**\n\n"
@@ -155,32 +187,37 @@ async def cmd_list(event):
             msg += f"🔹 **{p['display_name']}** (`{p['key_name']}`)\n"
             msg += f"   💰 ${p['price_usd']} USD\n\n"
     else:
-        msg += "⚠️ No hay productos.\n"
-    msg += "ℹ️ `.buy [clave]` para comprar."
+        msg += "⚠️ Catálogo vacío. Usa `.add` para llenar la tienda.\n"
+    
+    msg += "ℹ️ Usa `.buy` para ver el menú de compra."
     await event.reply(msg)
 
-# --- .BUY ---
+# --- .BUY (MEJORADO) ---
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
     if not await can_run_command(event): return
-    if not db.pool: return await event.reply("❌ Error: Base de datos desconectada.")
+    if not db.pool: return await event.reply("❌ Error: DB desconectada.")
     
     key_raw = event.pattern_match.group(1)
     key = key_raw.strip() if key_raw else None
     
+    # 1. Menú General
     if not key:
         products = await db.get_all_products()
-        msg = "🛒 **TIENDA**\n\n"
+        msg = "🛒 **TIENDA DISPONIBLE**\n\n"
         if products:
             for p in products:
-                msg += f"🔸 **{p['display_name']}**\n   👉 `.buy {p['key_name']}`\n\n"
+                msg += f"🔸 **{p['display_name']}**\n"
+                msg += f"   💰 ${p['price_usd']} USD\n"
+                msg += f"   👉 Pide tu factura: `.buy {p['key_name']}`\n\n"
         else:
-            msg += "⚠️ Tienda vacía."
+            msg += "⚠️ No hay productos aún."
         return await event.reply(msg)
 
+    # 2. Facturación
     product = await db.get_product(key.lower())
     if not product:
-        return await event.reply("❌ Producto no existe.")
+        return await event.reply("❌ Producto no encontrado.")
 
     import uuid
     order_id = str(uuid.uuid4())[:8]
@@ -195,30 +232,30 @@ async def cmd_buy(event):
             f"💳 **FACTURA GENERADA**\n"
             f"📦 {product['display_name']}\n"
             f"💵 **${amount} USD**\n\n"
-            f"🔗 **[PAGAR AQUÍ]({invoice['url']})**\n\n"
-            f"⏳ 60 Minutos."
+            f"🔗 **[PAGAR AQUÍ (USDT/BTC/LTC)]({invoice['url']})**\n\n"
+            f"⏳ Tienes 60 minutos."
         )
     else:
-        await msg_wait.edit("❌ Error API Pagos.")
+        await msg_wait.edit("❌ Error API Pagos (Revisa tu API Key).")
 
-# --- .ADD ---
+# --- .ADD (ADMIN) ---
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
     if not db.pool: return await event.edit("❌ DB Desconectada.")
     try:
         args = event.pattern_match.group(1).split('|')
         k, n, p = args[0].strip().lower(), args[1].strip(), float(args[2].strip())
-        d = args[3].strip() if len(args) > 3 else "Sin desc"
+        d = args[3].strip() if len(args) > 3 else "Sin descripción"
         l = args[4].strip() if len(args) > 4 else "N/A"
 
         async with db.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO products (key_name, display_name, price_usd, description, file_url) 
                    VALUES ($1, $2, $3, $4, $5)
-                   ON CONFLICT (key_name) DO UPDATE SET price_usd=$3, display_name=$2""",
+                   ON CONFLICT (key_name) DO UPDATE SET price_usd=$3, display_name=$2, description=$4""",
                 k, n, p, d, l
             )
-        await event.edit(f"✅ Agregado: {n}")
+        await event.edit(f"✅ Agregado a DB: {n}")
     except Exception as e:
         await event.edit(f"❌ Error: {e}")
 
@@ -228,7 +265,10 @@ async def admin_add(event):
 async def main():
     print("🌍 Server Online...")
     start_server()
-    await db.connect() # 👈 Aquí se conecta y limpia la URL
+    
+    print("🔌 Conectando DB...")
+    await db.connect() # ¡Esto creará las tablas si faltan!
+    
     print("🚀 Bot Listo.")
     await client.start()
     await client.run_until_disconnected()
