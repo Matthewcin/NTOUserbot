@@ -9,28 +9,25 @@ from flask import Flask
 from threading import Thread
 
 # ==========================================
-# ⚙️ CREDENCIALES Y CONFIGURACIÓN
+# ⚙️ CREDENCIALES
 # ==========================================
-# Variables de entorno (Render)
 API_ID = int(os.getenv('API_ID', '32541501'))
 API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f')
 SESSION_STRING = os.getenv('SESSION_STRING')
 DB_URL = os.getenv('DB_URL')
-# Aquí toma tu nueva clave de comerciante: WGJMFR-0DMVXO-IRCXPB-GDJHED
-OXAPAY_KEY = os.getenv('OXAPAY_KEY') 
+OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'WGJMFR-0DMVXO-IRCXPB-GDJHED')
 
-# Configuración del Userbot
 TARGET_GROUP = 'myConfigCloud'
 MY_USER_LINK = 'https://t.me/Virusnto'
 
 # ==========================================
-# 🌐 SERVIDOR WEB (Keep Alive)
+# 🌐 WEB SERVER
 # ==========================================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "✅ Bot Online & Pagos Activos"
+    return "✅ Bot Online. Escribe .list en Telegram."
 
 def run_server():
     port = int(os.environ.get("PORT", 8080))
@@ -41,7 +38,7 @@ def start_server():
     t.start()
 
 # ==========================================
-# 🔌 GESTOR DE BASE DE DATOS (Neon)
+# 🔌 DATABASE (CORREGIDA PARA NEON)
 # ==========================================
 class Database:
     def __init__(self, db_url):
@@ -51,23 +48,29 @@ class Database:
     async def connect(self):
         if not self.pool:
             try:
-                self.pool = await asyncpg.create_pool(self.db_url)
-                print("✅ Conexión a Base de Datos: EXITOSA")
+                # 🛠️ CORRECCIÓN: Limpiamos la URL para asyncpg
+                # asyncpg no soporta 'sslmode' ni 'channel_binding' en el string
+                url_limpia = self.db_url.split('?')[0] 
+                
+                # Forzamos SSL 'require' que es lo que pide Neon
+                self.pool = await asyncpg.create_pool(url_limpia, ssl='require')
+                print("✅ Neon DB Conectada Exitosamente")
             except Exception as e:
-                print(f"❌ Error conectando a Neon DB: {e}")
+                print(f"❌ Error CRÍTICO conectando a DB: {e}")
+                print("⚠️ Verifica que la variable DB_URL en Render sea correcta.")
 
-    # Obtener producto
     async def get_product(self, key):
+        if not self.pool: return None
         async with self.pool.acquire() as conn:
             return await conn.fetchrow("SELECT * FROM products WHERE key_name = $1", key)
 
-    # Obtener todos los productos
     async def get_all_products(self):
+        if not self.pool: return []
         async with self.pool.acquire() as conn:
             return await conn.fetch("SELECT * FROM products")
 
-    # Guardar nueva orden
     async def create_order(self, order_id, track_id, user_id, product_key, amount):
+        if not self.pool: return
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO orders (order_id, oxapay_track_id, user_id, product_key, amount_usd) 
@@ -78,157 +81,155 @@ class Database:
 db = Database(DB_URL)
 
 # ==========================================
-# 💸 MOTOR DE PAGOS (OXAPAY MERCHANT API)
+# 💸 OXAPAY
 # ==========================================
 def create_invoice(amount, order_id, description):
-    """Crea un link de pago usando la API de Comerciante"""
     url = "https://api.oxapay.com/merchants/request"
-    
     payload = {
         "merchant": OXAPAY_KEY,
         "amount": amount,
-        "currency": "USDT", # Moneda base del precio
-        "life_time": 60,    # Tiempo para pagar (minutos)
-        "fee_paid_by_payer": 0, # 0 = Tú pagas fee, 1 = Cliente paga
+        "currency": "USDT",
+        "life_time": 60,
+        "fee_paid_by_payer": 0,
         "return_url": MY_USER_LINK,
         "description": description,
         "order_id": order_id
     }
-
     try:
         response = requests.post(url, json=payload).json()
-        
-        # El código 100 significa Éxito
         if response.get("result") == 100:
-            return {
-                "url": response.get("pay_url"),
-                "track_id": response.get("trackId")
-            }
-        else:
-            print(f"❌ Error Oxapay: {response.get('message')}")
-            return None
-    except Exception as e:
-        print(f"❌ Excepción API: {e}")
+            return {"url": response.get("pay_url"), "track_id": response.get("trackId")}
+        return None
+    except:
         return None
 
 # ==========================================
-# 🤖 LÓGICA DEL USERBOT
+# 🤖 USERBOT
 # ==========================================
 if not SESSION_STRING:
-    print("❌ ERROR CRÍTICO: Falta SESSION_STRING")
+    print("❌ Falta SESSION_STRING")
     exit()
 
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 async def can_run_command(event):
-    """Permisos: Dueño (Tú) O Clientes en Privado/Grupo"""
     if event.out: return True
     chat = await event.get_chat()
     es_privado = event.is_private
     es_mi_grupo = (getattr(chat, 'username', '') == TARGET_GROUP)
     return es_privado or es_mi_grupo
 
-# --- COMANDO .LIST ---
+# --- .INFO ---
+@client.on(events.NewMessage(pattern=r'\.info(?:\s+(.*))?'))
+async def cmd_info(event):
+    if not await can_run_command(event): return
+    arg = event.pattern_match.group(1)
+    
+    if not arg:
+        return await event.reply("ℹ️ **Uso:** `.info ebook`")
+
+    if not db.pool: return await event.reply("❌ Error: Base de datos desconectada.")
+
+    product = await db.get_product(arg.lower())
+    if product:
+        await event.reply(
+            f"📘 **INFO: {product['display_name']}**\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"📝 {product['description']}\n\n"
+            f"💵 **Precio:** ${product['price_usd']} USD\n"
+            f"🛒 Comprar: `.buy {product['key_name']}`"
+        )
+    else:
+        await event.reply("❌ Producto no encontrado.")
+
+# --- .LIST ---
 @client.on(events.NewMessage(pattern=r'\.list'))
 async def cmd_list(event):
     if not await can_run_command(event): return
+    if not db.pool: return await event.reply("❌ Error: Base de datos desconectada.")
     
     products = await db.get_all_products()
-    msg = "📂 **CATÁLOGO DISPONIBLE**\n\n"
-    
-    if not products:
-        msg += "⚠️ No hay productos configurados aún."
-    else:
+    msg = "📂 **CATÁLOGO**\n\n"
+    if products:
         for p in products:
-            msg += f"🔹 **{p['display_name']}**\n"
-            msg += f"   💰 Precio: ${p['price_usd']} USD\n"
-            msg += f"   🔑 Clave: `{p['key_name']}`\n\n"
-    
-    msg += "🛒 Escribe `.buy [clave]` para comprar."
+            msg += f"🔹 **{p['display_name']}** (`{p['key_name']}`)\n"
+            msg += f"   💰 ${p['price_usd']} USD\n\n"
+    else:
+        msg += "⚠️ No hay productos.\n"
+    msg += "ℹ️ `.buy [clave]` para comprar."
     await event.reply(msg)
 
-# --- COMANDO .BUY ---
+# --- .BUY ---
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
     if not await can_run_command(event): return
+    if not db.pool: return await event.reply("❌ Error: Base de datos desconectada.")
     
-    key = event.pattern_match.group(1)
+    key_raw = event.pattern_match.group(1)
+    key = key_raw.strip() if key_raw else None
+    
     if not key:
-        return await event.reply("❌ **Uso correcto:** `.buy ebook` (o el nombre del producto)")
-    
-    # 1. Buscar producto en DB
+        products = await db.get_all_products()
+        msg = "🛒 **TIENDA**\n\n"
+        if products:
+            for p in products:
+                msg += f"🔸 **{p['display_name']}**\n   👉 `.buy {p['key_name']}`\n\n"
+        else:
+            msg += "⚠️ Tienda vacía."
+        return await event.reply(msg)
+
     product = await db.get_product(key.lower())
     if not product:
-        return await event.reply("❌ Producto no encontrado. Mira la lista con `.list`.")
+        return await event.reply("❌ Producto no existe.")
 
-    # 2. Preparar Orden
     import uuid
     order_id = str(uuid.uuid4())[:8]
     amount = float(product['price_usd'])
-    name = product['display_name']
-
-    # 3. Generar Link con Oxapay
-    msg_espera = await event.reply(f"🔄 **Generando factura para {name}...**")
     
-    invoice = create_invoice(amount, order_id, f"Compra: {name}")
+    msg_wait = await event.reply(f"🔄 Conectando Oxapay (${amount})...")
+    invoice = create_invoice(amount, order_id, f"Compra: {product['display_name']}")
     
     if invoice:
-        # 4. Guardar en Base de Datos
         await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
-        
-        # 5. Enviar Link al Cliente
-        await msg_espera.edit(
-            f"💳 **FACTURA DE PAGO CREADA**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📦 **Producto:** {name}\n"
-            f"💵 **Total:** ${amount} USD\n\n"
-            f"👇 **HAZ CLIC PARA PAGAR:**\n"
-            f"🔗 **[PAGAR CON CRIPTO AHORA]({invoice['url']})**\n\n"
-            f"ℹ️ Aceptamos: USDT, Bitcoin, Litecoin, Tron, etc.\n"
-            f"⏳ El enlace expira en 60 minutos.\n\n"
-            f"✅ **IMPORTANTE:** Cuando pagues, envíame el comprobante por aquí."
+        await msg_wait.edit(
+            f"💳 **FACTURA GENERADA**\n"
+            f"📦 {product['display_name']}\n"
+            f"💵 **${amount} USD**\n\n"
+            f"🔗 **[PAGAR AQUÍ]({invoice['url']})**\n\n"
+            f"⏳ 60 Minutos."
         )
     else:
-        await msg_espera.edit("❌ Error conectando con la pasarela de pagos. Intenta más tarde.")
+        await msg_wait.edit("❌ Error API Pagos.")
 
-# --- COMANDO ADMIN: .ADD (Guardar producto en DB) ---
+# --- .ADD ---
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
-    # Formato: .add ebook | Ebook Pro | 100 | Descripción | Link(opcional)
+    if not db.pool: return await event.edit("❌ DB Desconectada.")
     try:
         args = event.pattern_match.group(1).split('|')
-        if len(args) < 3:
-            return await event.edit("❌ Faltan datos. Uso: `.add clave | Nombre | Precio | Desc`")
+        k, n, p = args[0].strip().lower(), args[1].strip(), float(args[2].strip())
+        d = args[3].strip() if len(args) > 3 else "Sin desc"
+        l = args[4].strip() if len(args) > 4 else "N/A"
 
-        key = args[0].strip().lower()
-        name = args[1].strip()
-        price = float(args[2].strip())
-        desc = args[3].strip() if len(args) > 3 else "Sin descripción"
-        link_file = args[4].strip() if len(args) > 4 else "N/A"
-        
         async with db.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO products (key_name, display_name, price_usd, description, file_url) 
                    VALUES ($1, $2, $3, $4, $5)
-                   ON CONFLICT (key_name) DO UPDATE 
-                   SET price_usd=$3, display_name=$2, description=$4, file_url=$5""",
-                key, name, price, desc, link_file
+                   ON CONFLICT (key_name) DO UPDATE SET price_usd=$3, display_name=$2""",
+                k, n, p, d, l
             )
-        await event.edit(f"✅ **Producto Guardado en Neon:** {name}")
+        await event.edit(f"✅ Agregado: {n}")
     except Exception as e:
-        await event.edit(f"❌ Error DB: {e}")
+        await event.edit(f"❌ Error: {e}")
 
 # ==========================================
-# 🏁 INICIO DEL SISTEMA
+# 🏁 RUN
 # ==========================================
 async def main():
-    print("🌍 Iniciando Servidor Web...")
+    print("🌍 Server Online...")
     start_server()
-    
-    print("🔌 Conectando a Base de Datos...")
-    await db.connect()
-    
-    print("🚀 Userbot Iniciado (Modo Comerciante Oxapay)")
+    await db.connect() # 👈 Aquí se conecta y limpia la URL
+    print("🚀 Bot Listo.")
     await client.start()
     await client.run_until_disconnected()
 
