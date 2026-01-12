@@ -136,7 +136,6 @@ class DatabaseInternal:
 
 db = DatabaseInternal(config.DB_URL)
 
-
 # ============================
 # 👋 WELCOME LOGIC
 # ============================
@@ -174,14 +173,42 @@ async def cmd_hello(event):
     await send_welcome_sequence(await event.get_chat())
 
 # ============================
-# 🖥️ STATUS COMMAND (UPDATED)
+# 🛠️ URL DEBUG COMMAND (NUEVO)
+# ============================
+@client.on(events.NewMessage(pattern=r'\.urldebug(?:\s+(.*))?'))
+async def cmd_urldebug(event):
+    if not await can_run_command(event): return
+    
+    url = event.pattern_match.group(1)
+    if not url:
+        return await event.reply("❌ Usage: `.urldebug https://google.com`")
+        
+    await event.reply("🔍 **TESTING URL FORMATS**")
+    
+    # Test 1: Raw
+    await event.reply(f"1. RAW: {url}")
+    
+    # Test 2: Markdown
+    try:
+        await event.reply(f"2. MARKDOWN: [Click Here]({url})", parse_mode='md')
+    except Exception as e:
+        await event.reply(f"2. MARKDOWN ERROR: {e}")
+        
+    # Test 3: HTML
+    try:
+        await event.reply(f"3. HTML: <a href='{url}'>Click Here</a>", parse_mode='html')
+    except Exception as e:
+        await event.reply(f"3. HTML ERROR: {e}")
+
+# ============================
+# 🖥️ STATUS COMMAND (UPDATED LOGIC)
 # ============================
 @client.on(events.NewMessage(pattern=r'\.status(?:\s+(.*))?'))
 async def cmd_status(event):
     if not await can_run_command(event): return
     args = event.pattern_match.group(1)
 
-    # 1. ADMIN EDIT LOGIC
+    # 1. ADMIN EDIT
     if args and args.startswith('edit') and event.out:
         parts = args.split()
         if len(parts) < 3: return await event.edit("Usage: .status edit svb [url]")
@@ -195,32 +222,27 @@ async def cmd_status(event):
             await event.edit(f"OB2 URL Updated:\n`{new_url}`")
         return
 
-    # 2. CHECK DEBUG LOGIC (NUEVO)
-    # Uso: .status check svb
+    # 2. CHECK DEBUG
     if args and args.startswith('check'):
         parts = args.split()
         if len(parts) < 2: return await event.reply("Usage: <code>.status check svb</code>", parse_mode='html')
-        
         target = parts[1].lower()
         key = 'url_svb' if target == 'svb' else 'url_ob2' if target == 'ob2' else None
         
-        if not key: return await event.reply("Invalid target. Use svb or ob2")
-        
+        if not key: return await event.reply("Invalid target.")
         url = await db.get_setting(key)
         if not url: return await event.reply(f"⚠️ {target.upper()} URL not configured.")
         
         msg = await event.reply(f"🔍 Checking {target.upper()}...")
-        
         try:
-            # Hacemos el request real para ver el código
             r = requests.get(url, timeout=5)
             code = r.status_code
-            status_text = "ONLINE" if code == 200 else "ISSUES"
-        except Exception as e:
+            # Aceptamos 200 o 401 como online
+            status_text = "ONLINE" if code in [200, 401] else "ISSUES"
+        except:
             code = "UNREACHABLE"
             status_text = "DOWN"
 
-        # Reporte Técnico
         response = (
             f"🔎 <b>DEBUG CHECK: {target.upper()}</b>\n"
             f"🔗 <b>URL:</b> <code>{url}</code>\n"
@@ -230,7 +252,7 @@ async def cmd_status(event):
         await msg.edit(response, parse_mode='html')
         return
 
-    # 3. PUBLIC GENERAL STATUS
+    # 3. PUBLIC STATUS (UPDATED WITH 401 VALIDATION)
     if not db.pool: return await event.reply("Database Disconnected")
     
     url_svb = await db.get_setting('url_svb')
@@ -244,7 +266,9 @@ async def cmd_status(event):
             start = time.time()
             r = requests.get(url, timeout=5)
             ping = int((time.time() - start) * 1000)
-            if r.status_code == 200 or r.status_code == 401:
+            
+            # 👇 LÓGICA ACTUALIZADA: 200 O 401 ES VALIDO
+            if r.status_code in [200, 401]:
                 return f"✅ <b>ONLINE</b> ({ping}ms)"
             else:
                 return f"❌ <b>OFFLINE</b> (Code: {r.status_code})"
@@ -255,6 +279,11 @@ async def cmd_status(event):
     status_ob2 = check_server(url_ob2)
 
     final_msg = (
+        "📊 <b>SYSTEM STATUS</b>\n"
+        "━━━━━━━━━━━━━━━━\n"
+        f"🤖 <b>Bot System:</b> ✅ Online\n"
+        f"🛡️ <b>Database:</b> ✅ Connected\n"
+        "━━━━━━━━━━━━━━━━\n"
         f"☁️ <b>SVB Cloud:</b> {status_svb}\n"
         f"☁️ <b>OB2 Cloud:</b> {status_ob2}\n"
     )
@@ -272,7 +301,7 @@ async def cmd_help(event):
 async def cmd_cmds(event):
     if not await can_run_command(event): return
     msg = (
-        "<b>COMMAND LIST</b>\n━━━━━━━━━━━━━━━━\n"
+        "🤖 <b>COMMAND LIST</b>\n━━━━━━━━━━━━━━━━\n"
         "🔹 <code>.list</code> » View Catalog\n"
         "🔹 <code>.info [item]</code> » Details\n"
         "🔹 <code>.buy</code> » Purchase Menu\n"
@@ -322,7 +351,7 @@ async def cmd_request(event):
     await event.reply(f"Request received: {arg}")
 
 # ============================
-# 💳 BUY COMMAND
+# 💳 BUY COMMAND (LOGGING ADDED)
 # ============================
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
@@ -352,8 +381,9 @@ async def cmd_buy(event):
         msg_wait = await event.reply(f"Creating invoice for ${amount}...")
         
         invoice = create_invoice(amount, order_id, f"Buy: {product['display_name']}")
+        print(f"DEBUG INVOICE: {invoice}") # MIRA ESTO EN RENDER LOGS
         
-        if invoice:
+        if invoice and invoice.get('url'):
             await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
             
             link_html = f"<a href='{invoice['url']}'>🔗 PAY NOW - CLICK HERE</a>"
@@ -369,8 +399,10 @@ async def cmd_buy(event):
                 link_preview=False
             )
         else:
-            await msg_wait.edit("Payment Gateway Error.")
+            await msg_wait.edit("❌ Payment Gateway Error (Check Logs).")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         await event.reply(f"System Error: {e}")
 
 # ============================
@@ -388,6 +420,7 @@ async def secret_menu(event):
         "🔸 <code>.status edit svb [url]</code> » SVB Url\n"
         "🔸 <code>.status edit ob2 [url]</code> » OB2 Url\n"
         "🔸 <code>.status check svb</code> » Debug SVB\n"
+        "🔸 <code>.urldebug [url]</code> » Debug Links\n"
     )
     await client.send_message("me", msg, parse_mode='html')
 
@@ -409,8 +442,7 @@ async def admin_add(event):
         async with db.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO products (key_name, display_name, price_usd, description, file_url) 
-                   VALUES ($1, $2, $3, $4, $5)
-                   ON CONFLICT (key_name) DO UPDATE SET price_usd=$3, display_name=$2, description=$4""",
+                   VALUES ($1, $2, $3, $4, $5)""",
                 k, n, p, d, l
             )
         await event.delete()
@@ -451,7 +483,7 @@ async def main():
     await db.connect() 
     print("🚀 Telegram Login...")
     await client.start()
-    try: await client.send_message("me", "System Online (v7.1)")
+    try: await client.send_message("me", "System Online (v8.0)")
     except: pass
     await client.run_until_disconnected()
 
