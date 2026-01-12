@@ -18,7 +18,7 @@ DB_URL = os.getenv('DB_URL')
 OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'WGJMFR-0DMVXO-IRCXPB-GDJHED')
 
 TARGET_GROUP = 'myConfigCloud'
-MY_USER_LINK = 'https://t.me/Virusnto'
+MY_USER_LINK = 'https://t.me/whois_tyler'
 
 # ==========================================
 # 🌐 WEB SERVER
@@ -38,7 +38,7 @@ def start_server():
     t.start()
 
 # ==========================================
-# 🔌 DATABASE MANAGER (Neon Fix + Auto Tables)
+# 🔌 DATABASE MANAGER
 # ==========================================
 class Database:
     def __init__(self, db_url):
@@ -68,11 +68,11 @@ class Database:
                     file_url TEXT
                 );
             """)
-            # Order Table
+            # Order Table - CHANGED oxapay_track_id TO TEXT FOR SAFETY
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id TEXT PRIMARY KEY,
-                    oxapay_track_id BIGINT,
+                    oxapay_track_id TEXT, 
                     user_id BIGINT,
                     product_key TEXT,
                     amount_usd NUMERIC(10, 2),
@@ -93,16 +93,18 @@ class Database:
 
     async def create_order(self, order_id, track_id, user_id, product_key, amount):
         if not self.pool: return
+        # Ensure track_id is treated as string to avoid BigInt errors
+        track_id_str = str(track_id)
+        
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO orders (order_id, oxapay_track_id, user_id, product_key, amount_usd) 
                    VALUES ($1, $2, $3, $4, $5)""",
-                order_id, track_id, user_id, product_key, amount
+                order_id, track_id_str, user_id, product_key, amount
             )
 
     async def update_product(self, key, field, value):
         if not self.pool: return False
-        # Map simple fields to DB columns
         valid_fields = {
             'price': 'price_usd',
             'name': 'display_name',
@@ -110,16 +112,13 @@ class Database:
             'link': 'file_url'
         }
         if field not in valid_fields: return False
-        
         column = valid_fields[field]
         
-        # Convert price to float
         if field == 'price':
             try: value = float(value)
             except: return False
 
         async with self.pool.acquire() as conn:
-            # We construct the query safely
             query = f"UPDATE products SET {column} = $1 WHERE key_name = $2"
             result = await conn.execute(query, value, key)
             return result != "UPDATE 0"
@@ -149,12 +148,9 @@ def create_invoice(amount, order_id, description):
     }
     try:
         response = requests.post(url, json=payload).json()
-        
-        # DEBUG: Print response if it fails
         if response.get("result") != 100:
-            print(f"⚠️ OXAPAY ERROR: {response}") # Check Render Logs if this happens
+            print(f"⚠️ OXAPAY ERROR: {response}")
             return None
-            
         return {"url": response.get("pay_url"), "track_id": response.get("trackId")}
     except Exception as e:
         print(f"⚠️ API EXCEPTION: {e}")
@@ -177,7 +173,7 @@ async def can_run_command(event):
     return es_privado or es_mi_grupo
 
 # ---------------------------------------------
-# 📜 PUBLIC COMMANDS (US English)
+# 📜 PUBLIC COMMANDS
 # ---------------------------------------------
 
 @client.on(events.NewMessage(pattern=r'\.status'))
@@ -203,7 +199,7 @@ async def cmd_cmds(event):
         "🔹 `.request [text]` » Request Config/Account\n"
         "🔹 `.status` » System Status"
     )
-    if event.out: # Only YOU see this
+    if event.out: 
         msg += (
             "\n\n👮‍♂️ **ADMIN (Stealth Mode):**\n"
             "🔸 `.add key|Name|$$|Desc` » Add Item\n"
@@ -252,7 +248,7 @@ async def cmd_request(event):
     await event.reply(f"✅ **Request Received:** {arg}\nI will consider it for future updates.")
 
 # ---------------------------------------------
-# 💳 BUY COMMAND (Debugged)
+# 💳 BUY COMMAND (FIXED TYPE ERROR)
 # ---------------------------------------------
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
@@ -274,44 +270,47 @@ async def cmd_buy(event):
         return await event.reply(msg)
 
     # 2. INVOICE MODE
-    product = await db.get_product(key.lower())
-    if not product: return await event.reply("❌ Product not found.")
+    try:
+        product = await db.get_product(key.lower())
+        if not product: return await event.reply("❌ Product not found.")
 
-    import uuid
-    order_id = str(uuid.uuid4())[:8]
-    amount = float(product['price_usd'])
-    
-    # Send waiting message
-    msg_wait = await event.reply(f"🔄 Creating invoice for ${amount}...")
-    
-    invoice = create_invoice(amount, order_id, f"Buy: {product['display_name']}")
-    
-    if invoice:
-        await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
-        await msg_wait.edit(
-            f"💳 **INVOICE GENERATED**\n"
-            f"📦 Item: {product['display_name']}\n"
-            f"💵 Total: **${amount} USD**\n\n"
-            f"🔗 **[PAY NOW (CRYPTO)]({invoice['url']})**\n\n"
-            f"⏳ Valid for 60 minutes.\n"
-            f"ℹ️ Automatic confirmation."
-        )
-    else:
-        # If failure, show generic error to user, but check logs in Render
-        await msg_wait.edit("❌ **Payment Gateway Error.**\nPlease contact admin manually.")
+        import uuid
+        order_id = str(uuid.uuid4())[:8]
+        amount = float(product['price_usd'])
+        
+        msg_wait = await event.reply(f"🔄 Creating invoice for ${amount}...")
+        
+        invoice = create_invoice(amount, order_id, f"Buy: {product['display_name']}")
+        
+        if invoice:
+            # FIX: We ensure we pass the data correctly handled in db.create_order
+            await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
+            
+            await msg_wait.edit(
+                f"💳 **INVOICE GENERATED**\n"
+                f"📦 Item: {product['display_name']}\n"
+                f"💵 Total: **${amount} USD**\n\n"
+                f"🔗 **[PAY NOW (CRYPTO)]({invoice['url']})**\n\n"
+                f"⏳ Valid for 60 minutes.\n"
+                f"ℹ️ Automatic confirmation."
+            )
+        else:
+            await msg_wait.edit("❌ **Payment Gateway Error.**\nPlease contact admin manually.")
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await event.reply(f"❌ System Error: {e}")
 
 # ---------------------------------------------
-# 👮‍♂️ ADMIN COMMANDS (Stealth Mode 🥷)
+# 👮‍♂️ ADMIN COMMANDS
 # ---------------------------------------------
-# These commands delete themselves and reply in Saved Messages
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
-    # .add key|Name|Price|Desc
     try:
         args = event.pattern_match.group(1).split('|')
         if len(args) < 3: 
-            # Send error to saved messages
             await event.delete()
             return await client.send_message("me", "❌ Error: `.add key | Name | Price | Desc`")
         
@@ -326,10 +325,8 @@ async def admin_add(event):
                    ON CONFLICT (key_name) DO UPDATE SET price_usd=$3, display_name=$2, description=$4""",
                 k, n, p, d, l
             )
-        
-        await event.delete() # Delete from group
+        await event.delete()
         await client.send_message("me", f"✅ **Product Added:** {n} (${p})")
-        
     except Exception as e:
         await event.delete()
         await client.send_message("me", f"❌ DB Error: {e}")
@@ -338,17 +335,12 @@ async def admin_add(event):
 async def admin_del(event):
     key = event.pattern_match.group(1).strip().lower()
     success = await db.delete_product(key)
-    
-    await event.delete() # Delete from group
-    if success:
-        await client.send_message("me", f"🗑️ **Deleted:** {key}")
-    else:
-        await client.send_message("me", f"⚠️ Product not found: {key}")
+    await event.delete()
+    if success: await client.send_message("me", f"🗑️ **Deleted:** {key}")
+    else: await client.send_message("me", f"⚠️ Not found: {key}")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.edit\s+(.*)'))
 async def admin_edit(event):
-    # Format: .edit ebook price 60
-    # Fields: price, name, desc
     try:
         args = event.pattern_match.group(1).split()
         if len(args) < 3:
@@ -357,18 +349,13 @@ async def admin_edit(event):
 
         key = args[0].lower()
         field = args[1].lower()
-        # Join the rest of arguments as value (for names with spaces)
         value = " ".join(args[2:]) 
 
         success = await db.update_product(key, field, value)
+        await event.delete()
         
-        await event.delete() # Delete from group
-        
-        if success:
-            await client.send_message("me", f"✅ **Updated:** {key} -> {field} = {value}")
-        else:
-            await client.send_message("me", f"❌ Failed. Check if key exists or field name (price/name/desc).")
-            
+        if success: await client.send_message("me", f"✅ **Updated:** {key} -> {field}")
+        else: await client.send_message("me", f"❌ Failed. Check key or field name.")
     except Exception as e:
         await event.delete()
         await client.send_message("me", f"❌ Error: {e}")
@@ -382,11 +369,9 @@ async def main():
     await db.connect() 
     print("🚀 Telegram Login...")
     await client.start()
-    
     try:
         await client.send_message("me", "🚀 **DEPLOY SUCCESSFUL**\n✅ Bot is ready & Online.")
     except: pass
-    
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
