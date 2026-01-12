@@ -19,7 +19,7 @@ class Database:
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
-            # Tablas existentes (Products, Orders, Settings)...
+            # Tablas (Products, Orders, Settings, Licenses)...
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id SERIAL PRIMARY KEY,
@@ -47,9 +47,6 @@ class Database:
                     value TEXT
                 );
             """)
-
-            # 🆕 TABLA LICENCIAS (Con columna de Cooldown)
-            # Agregamos last_ip_change si no existe
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS licenses (
                     user_id BIGINT PRIMARY KEY,
@@ -58,12 +55,11 @@ class Database:
                     last_ip_change TIMESTAMP
                 );
             """)
-            # Migración automática por si la tabla ya existía sin esa columna
-            try:
-                await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
+            # Migración por si acaso
+            try: await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
             except: pass
 
-    # --- MÉTODOS ANTERIORES (Get Product, etc) ---
+    # --- MÉTODOS ESTÁNDAR (Get, Create, etc) ---
     async def get_product(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -143,36 +139,41 @@ class Database:
         except:
             return False
 
-    # 🆕 NUEVOS MÉTODOS PARA COOLDOWN (7 DÍAS)
     async def can_change_ip(self, user_id):
-        """Retorna True si han pasado 7 días, o el tiempo restante en texto."""
         if not self.pool: return False
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT last_ip_change FROM licenses WHERE user_id = $1", user_id)
-            if not row or not row['last_ip_change']:
-                return True # Nunca ha cambiado, permiso concedido
+            if not row or not row['last_ip_change']: return True
             
-            last_change = row['last_ip_change']
-            now = time.time()
-            # Convertimos timestamp de DB a segundos si es necesario, o usamos datetime
-            # asyncpg devuelve datetime objects. Convertimos a timestamp.
-            last_ts = last_change.timestamp()
+            last_ts = row['last_ip_change'].timestamp()
+            diff = time.time() - last_ts
+            seven_days = 7 * 24 * 60 * 60
             
-            diff = now - last_ts
-            seven_days = 7 * 24 * 60 * 60 # 604800 segundos
-            
-            if diff >= seven_days:
-                return True
-            else:
-                remaining = seven_days - diff
-                days = int(remaining // 86400)
-                hours = int((remaining % 86400) // 3600)
-                return f"{days} days, {hours} hours"
+            if diff >= seven_days: return True
+            remaining = seven_days - diff
+            days = int(remaining // 86400)
+            hours = int((remaining % 86400) // 3600)
+            return f"{days}d {hours}h"
 
     async def update_ip_cooldown(self, user_id):
-        """Actualiza la fecha del último cambio a AHORA"""
         if not self.pool: return
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE licenses SET last_ip_change = NOW() WHERE user_id = $1", user_id)
+
+    # 🆕 NUEVO: BUSCADOR INTELIGENTE DE KEY
+    async def search_license_by_partial(self, partial_text):
+        """Busca una licencia que contenga el texto dado (case insensitive)"""
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            # ILIKE es case-insensitive en Postgres. %texto% busca en cualquier parte.
+            pattern = f"%{partial_text}%"
+            rows = await conn.fetch("SELECT api_key FROM licenses WHERE api_key ILIKE $1", pattern)
+            
+            if len(rows) == 0:
+                return None # No se encontró nada
+            elif len(rows) == 1:
+                return rows[0]['api_key'] # Se encontró EXACTAMENTE una
+            else:
+                return "AMBIGUOUS" # Se encontraron muchas (ej: "VIRUS" coincide con VIRUS-1 y VIRUS-2)
 
 db = Database()
