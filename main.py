@@ -244,7 +244,7 @@ async def cmd_status(event):
             start = time.time()
             r = requests.get(url, timeout=5)
             ping = int((time.time() - start) * 1000)
-            if r.status_code == 200:
+            if r.status_code == 200 or r.status_code == 401:
                 return f"✅ <b>ONLINE</b> ({ping}ms)"
             else:
                 return f"❌ <b>OFFLINE</b> (Code: {r.status_code})"
