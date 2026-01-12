@@ -3,7 +3,7 @@ import asyncio
 from telethon import events
 import config
 from database import db
-from handlers.utils import can_run_command
+# No necesitamos can_run_command para el chequeo estricto de admin, usaremos event.out
 
 def ob_api_request(method, endpoint, data=None):
     url = f"{config.OB_URL}/api/{endpoint}"
@@ -22,7 +22,7 @@ async def temp_message(event, text, delay=3):
     await asyncio.sleep(delay)
     await msg.delete()
 
-# --- REDEEM (Igual que antes) ---
+# --- REDEEM ---
 async def handler_redeem(event):
     args = event.pattern_match.group(1)
     await event.delete()
@@ -66,7 +66,7 @@ async def handler_redeem(event):
         await wait_msg.delete()
         await temp_message(event, "❌ **DB Error.**")
 
-# --- CHANGE IP (Con Buscador Inteligente) ---
+# --- CHANGE IP ---
 async def handler_changeip(event):
     args = event.pattern_match.group(1)
     await event.delete()
@@ -76,28 +76,31 @@ async def handler_changeip(event):
         return
 
     parts = args.split()
-    is_admin = await can_run_command(event) 
     
-    # 🕵️‍♂️ MODO ADMIN: .changeip [PARTIAL_NAME] [IP]
-    if len(parts) >= 2 and is_admin:
-        # El input es lo que escribió (ej: "virus-nto")
+    # 🛑 SEGURIDAD CRÍTICA: MODO ADMIN (2 Argumentos)
+    # Si hay 2 partes (Key Parcial + IP), verificamos ESTRICTAMENTE que seas TÚ.
+    if len(parts) >= 2:
+        # event.out es True SOLO si el mensaje salió de TU cuenta (Userbot)
+        if not event.out:
+            await temp_message(event, "⛔ **Access Denied:** Admin only.")
+            return
+
+        # --- LÓGICA DE ADMIN ---
         search_input = parts[0].strip()
         new_ip = parts[1].strip()
         
-        # 👇 MAGIA AQUÍ: Buscamos la key completa en la DB
         full_key = await db.search_license_by_partial(search_input)
         
         if full_key is None:
             await temp_message(event, f"❌ Admin: No key matches '{search_input}'")
             return
         elif full_key == "AMBIGUOUS":
-            await temp_message(event, f"⚠️ Admin: '{search_input}' matches multiple keys. Be specific.")
+            await temp_message(event, f"⚠️ Admin: Multiple matches for '{search_input}'")
             return
             
-        # Si encontramos una única key, procedemos con ella
         user_data, status = ob_api_request('GET', f"users/{full_key}")
         if status != 200:
-            await temp_message(event, "❌ Admin: Key found in DB but invalid on Server.")
+            await temp_message(event, "❌ Admin: Invalid Key on Server.")
             return
             
         groups = user_data.get('groups', [])
@@ -106,12 +109,12 @@ async def handler_changeip(event):
         _, up_status = ob_api_request('PUT', f"users/{full_key}", update_data)
         
         if up_status in [200, 204]:
-            await temp_message(event, f"✅ **ADMIN:** IP Updated for `{search_input}`")
+            await temp_message(event, f"✅ **ADMIN:** Updated `{search_input}` to `{new_ip}`")
         else:
             await temp_message(event, "❌ **ADMIN:** Update Failed.")
         return
 
-    # 👤 MODO USUARIO: .changeip [IP]
+    # 👤 MODO USUARIO: .changeip [IP] (1 Argumento)
     new_ip = parts[0].strip()
     user_id = event.sender_id
 
