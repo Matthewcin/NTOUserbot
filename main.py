@@ -18,7 +18,7 @@ DB_URL = os.getenv('DB_URL')
 OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'WGJMFR-0DMVXO-IRCXPB-GDJHED')
 
 TARGET_GROUP = 'myConfigCloud'
-MY_USER_LINK = 'https://t.me/Virusnto'
+MY_USER_LINK = 'https://t.me/whois_tyler'
 
 # ==========================================
 # 🌐 WEB SERVER (Para Render)
