@@ -1,22 +1,22 @@
 import asyncio
 import uuid
+import requests # Necesario para hacer el ping real
+import time
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-# Imports locales (Tus otros archivos)
+# Imports locales
 import config
 from database import db
 from payments import create_invoice
 from server import start_server
 
-# Check credentials
 if not config.SESSION_STRING:
     print("❌ MISSING SESSION_STRING")
     exit()
 
 client = TelegramClient(StringSession(config.SESSION_STRING), config.API_ID, config.API_HASH)
 
-# --- PERMISSIONS CHECK ---
 async def can_run_command(event):
     if event.out: return True
     chat = await event.get_chat()
@@ -25,13 +25,79 @@ async def can_run_command(event):
     return es_privado or es_mi_grupo
 
 # ============================
-# 📜 PUBLIC COMMANDS
+# 🖥️ STATUS COMMAND (MEJORADO)
 # ============================
-
-@client.on(events.NewMessage(pattern=r'\.status'))
+@client.on(events.NewMessage(pattern=r'\.status(?:\s+(.*))?'))
 async def cmd_status(event):
     if not await can_run_command(event): return
-    await event.reply("✅ **SYSTEM ONLINE**\n🛡️ DB Connection: Stable\n💰 Gateway: Active")
+
+    args = event.pattern_match.group(1)
+
+    # 🟢 MODO 1: VER ESTADO (Si no hay argumentos o no es 'edit')
+    if not args or not args.startswith('edit'):
+        if not db.pool: return await event.reply("❌ Database Disconnected")
+        
+        # 1. Obtener URLs de la DB
+        url_svb = await db.get_setting('url_svb')
+        url_ob2 = await db.get_setting('url_ob2')
+        
+        msg = await event.reply("🔄 **Checking Server Status...**")
+        
+        # 2. Función interna para chequear URL
+        def check_server(url, name):
+            if not url: return "⚠️ Not Configured"
+            try:
+                start = time.time()
+                r = requests.get(url, timeout=5) # 5s timeout
+                ping = int((time.time() - start) * 1000)
+                if r.status_code == 200:
+                    return f"✅ **ONLINE** ({ping}ms)"
+                else:
+                    return f"❌ **OFFLINE** (Code: {r.status_code})"
+            except:
+                return "❌ **DOWN** (No response)"
+
+        # 3. Ejecutar chequeos (en paralelo sería mejor, pero esto es simple)
+        status_svb = check_server(url_svb, "SVB")
+        status_ob2 = check_server(url_ob2, "OB2")
+
+        # 4. Enviar reporte
+        final_msg = (
+            "📊 **SYSTEM STATUS REPORT**\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🤖 **Bot System:** ✅ Online\n"
+            f"🛡️ **Database:** ✅ Connected\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"☁️ **SVB Cloud:** {status_svb}\n"
+            f"☁️ **OB2 Cloud:** {status_ob2}\n"
+        )
+        await msg.edit(final_msg)
+        return
+
+    # 🔴 MODO 2: EDITAR URLS (Solo Admin)
+    # Formato: .status edit svb [url]
+    if event.out: # Solo TÚ puedes editar
+        parts = args.split()
+        # parts[0] es 'edit', parts[1] es tipo, parts[2] es url
+        
+        if len(parts) < 3:
+            return await event.edit("❌ Usage: `.status edit svb https://new-url.com`\nTypes: `svb` or `ob2`")
+            
+        target = parts[1].lower()
+        new_url = parts[2]
+        
+        if target == 'svb':
+            await db.set_setting('url_svb', new_url)
+            await event.edit(f"✅ **SVB URL Updated:**\n`{new_url}`")
+        elif target == 'ob2':
+            await db.set_setting('url_ob2', new_url)
+            await event.edit(f"✅ **OB2 URL Updated:**\n`{new_url}`")
+        else:
+            await event.edit("❌ Invalid Type. Use `svb` or `ob2`.")
+
+# ============================
+# 📜 OTHER COMMANDS
+# ============================
 
 @client.on(events.NewMessage(pattern=r'\.help'))
 async def cmd_help(event):
@@ -48,10 +114,16 @@ async def cmd_cmds(event):
         "🔹 `.buy` » Purchase Menu\n"
         "🔹 `.buy [item]` » Invoice\n"
         "🔹 `.request [text]` » Request\n"
-        "🔹 `.status` » Status"
+        "🔹 `.status` » Check Server Health"
     )
     if event.out: 
-        msg += "\n\n👮‍♂️ **ADMIN:**\n🔸 `.add key|Name|$$|Desc`\n🔸 `.edit key field value`\n🔸 `.del key`"
+        msg += (
+            "\n\n👮‍♂️ **ADMIN:**\n"
+            "🔸 `.add key|Name|$$|Desc`\n"
+            "🔸 `.edit key field value`\n"
+            "🔸 `.del key`\n"
+            "🔸 `.status edit svb [url]`"
+        )
     await event.reply(msg)
 
 @client.on(events.NewMessage(pattern=r'\.list'))
@@ -135,7 +207,7 @@ async def cmd_buy(event):
         await event.reply(f"❌ Error: {e}")
 
 # ============================
-# 👮‍♂️ ADMIN COMMANDS (STEALTH)
+# 👮‍♂️ ADMIN COMMANDS
 # ============================
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
@@ -195,7 +267,7 @@ async def main():
     await db.connect() 
     print("🚀 Telegram Login...")
     await client.start()
-    try: await client.send_message("me", "🚀 **MODULAR DEPLOY SUCCESSFUL**")
+    try: await client.send_message("me", "🚀 **SYSTEM UPDATED**")
     except: pass
     await client.run_until_disconnected()
 
