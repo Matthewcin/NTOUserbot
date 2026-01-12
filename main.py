@@ -18,16 +18,16 @@ DB_URL = os.getenv('DB_URL')
 OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'WGJMFR-0DMVXO-IRCXPB-GDJHED')
 
 TARGET_GROUP = 'myConfigCloud'
-MY_USER_LINK = 'https://t.me/whois_tyler'
+MY_USER_LINK = 'https://t.me/Virusnto'
 
 # ==========================================
-# 🌐 WEB SERVER (Para Render)
+# 🌐 WEB SERVER (Keep Alive)
 # ==========================================
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "✅ Bot Online. Tablas de DB verificadas."
+    return "✅ Bot Online. Sistema Operativo."
 
 def run_server():
     port = int(os.environ.get("PORT", 8080))
@@ -38,7 +38,7 @@ def start_server():
     t.start()
 
 # ==========================================
-# 🔌 DATABASE (Auto-Creación + Neon Fix)
+# 🔌 DATABASE (NEON + AUTO-FIX)
 # ==========================================
 class Database:
     def __init__(self, db_url):
@@ -48,22 +48,16 @@ class Database:
     async def connect(self):
         if not self.pool:
             try:
-                # 1. Limpiamos la URL para evitar error con asyncpg y Neon
-                # Quitamos '?sslmode=require...' que asyncpg no soporta en el string
+                # Limpiamos la URL para evitar errores con asyncpg
                 url_limpia = self.db_url.split('?')[0]
-                
-                # 2. Conectamos forzando SSL
                 self.pool = await asyncpg.create_pool(url_limpia, ssl='require')
-                print("✅ Neon DB Conectada Correctamente")
                 
-                # 3. CREACIÓN AUTOMÁTICA DE TABLAS
+                # Verificamos/Creamos tablas
                 await self.init_tables()
-                
             except Exception as e:
-                print(f"❌ Error CRÍTICO conectando a DB: {e}")
+                print(f"❌ Error CRÍTICO DB: {e}")
 
     async def init_tables(self):
-        """Crea las tablas si no existen (Auto-Reparación)"""
         async with self.pool.acquire() as conn:
             # Tabla Productos
             await conn.execute("""
@@ -76,7 +70,6 @@ class Database:
                     file_url TEXT
                 );
             """)
-            
             # Tabla Ordenes
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
@@ -89,7 +82,6 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            print("✅ Tablas 'products' y 'orders' verificadas/creadas.")
 
     async def get_product(self, key):
         if not self.pool: return None
@@ -109,11 +101,17 @@ class Database:
                    VALUES ($1, $2, $3, $4, $5)""",
                 order_id, track_id, user_id, product_key, amount
             )
+            
+    async def delete_product(self, key):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM products WHERE key_name = $1", key)
+            return result != "DELETE 0"
 
 db = Database(DB_URL)
 
 # ==========================================
-# 💸 OXAPAY API
+# 💸 OXAPAY (MERCHANT API)
 # ==========================================
 def create_invoice(amount, order_id, description):
     url = "https://api.oxapay.com/merchants/request"
@@ -136,7 +134,7 @@ def create_invoice(amount, order_id, description):
         return None
 
 # ==========================================
-# 🤖 USERBOT
+# 🤖 USERBOT SYSTEM
 # ==========================================
 if not SESSION_STRING:
     print("❌ Falta SESSION_STRING")
@@ -151,101 +149,137 @@ async def can_run_command(event):
     es_mi_grupo = (getattr(chat, 'username', '') == TARGET_GROUP)
     return es_privado or es_mi_grupo
 
-# --- .INFO ---
+# ---------------------------------------------
+# 📜 1. COMANDOS INFORMATIVOS (.status .cmds .help)
+# ---------------------------------------------
+@client.on(events.NewMessage(pattern=r'\.status'))
+async def cmd_status(event):
+    if not await can_run_command(event): return
+    await event.reply("✅ **SISTEMA ONLINE**\n🛡️ Neon DB: Conectada\n💰 Pasarela: Activa")
+
+@client.on(events.NewMessage(pattern=r'\.help'))
+async def cmd_help(event):
+    if not await can_run_command(event): return
+    await event.reply("🆘 **AYUDA**\nUsa `.cmds` para ver la lista completa de comandos.")
+
+@client.on(events.NewMessage(pattern=r'\.cmds'))
+async def cmd_cmds(event):
+    if not await can_run_command(event): return
+    msg = (
+        "🤖 **LISTA DE COMANDOS**\n"
+        "━━━━━━━━━━━━━━━━\n"
+        "🔹 `.list` » Ver catálogo\n"
+        "🔹 `.info [item]` » Detalles de producto\n"
+        "🔹 `.buy` » Menú de compra\n"
+        "🔹 `.buy [item]` » Generar factura\n"
+        "🔹 `.request [txt]` » Solicitar algo\n"
+        "🔹 `.status` » Estado del bot"
+    )
+    if event.out: # Solo tú ves esto
+        msg += (
+            "\n\n👮‍♂️ **ADMIN (Solo tú):**\n"
+            "🔸 `.add key|Nom|$$|Desc` » Agregar\n"
+            "🔸 `.del key` » Borrar"
+        )
+    await event.reply(msg)
+
+# ---------------------------------------------
+# 📂 2. COMANDOS DE TIENDA (.list .info .request)
+# ---------------------------------------------
+@client.on(events.NewMessage(pattern=r'\.list'))
+async def cmd_list(event):
+    if not await can_run_command(event): return
+    if not db.pool: return await event.reply("❌ Error DB")
+    
+    products = await db.get_all_products()
+    msg = "📂 **CATÁLOGO DISPONIBLE**\n\n"
+    if products:
+        for p in products:
+            msg += f"🔹 **{p['display_name']}**\n   💰 ${p['price_usd']} USD | Clave: `{p['key_name']}`\n\n"
+    else:
+        msg += "⚠️ Tienda vacía.\n"
+    msg += "ℹ️ `.buy [clave]` para comprar."
+    await event.reply(msg)
+
 @client.on(events.NewMessage(pattern=r'\.info(?:\s+(.*))?'))
 async def cmd_info(event):
     if not await can_run_command(event): return
     arg = event.pattern_match.group(1)
-    
-    if not arg:
-        return await event.reply("ℹ️ **Uso:** `.info ebook`")
-
-    if not db.pool: return await event.reply("❌ Error: DB desconectada.")
+    if not arg: return await event.reply("ℹ️ Uso: `.info ebook`")
 
     product = await db.get_product(arg.lower())
     if product:
         await event.reply(
-            f"📘 **INFO: {product['display_name']}**\n"
-            f"━━━━━━━━━━━━━━━━\n"
+            f"📘 **INFO: {product['display_name']}**\n━━━━━━━━━━━━━━━━\n"
             f"📝 {product['description']}\n\n"
-            f"💵 **Precio:** ${product['price_usd']} USD\n"
-            f"🛒 Compra escribiendo: `.buy {product['key_name']}`"
+            f"💵 Precio: **${product['price_usd']} USD**\n"
+            f"👉 Compra con: `.buy {product['key_name']}`"
         )
     else:
         await event.reply("❌ Producto no encontrado.")
 
-# --- .LIST ---
-@client.on(events.NewMessage(pattern=r'\.list'))
-async def cmd_list(event):
+@client.on(events.NewMessage(pattern=r'\.request(?:\s+(.*))?'))
+async def cmd_request(event):
     if not await can_run_command(event): return
-    if not db.pool: return await event.reply("❌ Error: DB desconectada.")
+    arg = event.pattern_match.group(1)
+    if not arg: return await event.reply("📝 Dime qué necesitas. Ej: `.request config amazon`")
     
-    products = await db.get_all_products()
-    msg = "📂 **CATÁLOGO**\n\n"
-    if products:
-        for p in products:
-            msg += f"🔹 **{p['display_name']}** (`{p['key_name']}`)\n"
-            msg += f"   💰 ${p['price_usd']} USD\n\n"
-    else:
-        msg += "⚠️ Catálogo vacío. Usa `.add` para llenar la tienda.\n"
-    
-    msg += "ℹ️ Usa `.buy` para ver el menú de compra."
-    await event.reply(msg)
+    await event.reply(f"✅ **Solicitud Recibida:** {arg}\nLo tendré en cuenta para futuras actualizaciones.")
 
-# --- .BUY (MEJORADO) ---
+# ---------------------------------------------
+# 💳 3. COMANDO DE COMPRA (.buy)
+# ---------------------------------------------
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
     if not await can_run_command(event): return
-    if not db.pool: return await event.reply("❌ Error: DB desconectada.")
+    if not db.pool: return await event.reply("❌ Error DB")
     
     key_raw = event.pattern_match.group(1)
     key = key_raw.strip() if key_raw else None
     
-    # 1. Menú General
+    # CASO 1: SIN ARGUMENTO (MENU)
     if not key:
         products = await db.get_all_products()
-        msg = "🛒 **TIENDA DISPONIBLE**\n\n"
+        msg = "🛒 **MENÚ DE COMPRA**\n\n"
         if products:
             for p in products:
-                msg += f"🔸 **{p['display_name']}**\n"
-                msg += f"   💰 ${p['price_usd']} USD\n"
-                msg += f"   👉 Pide tu factura: `.buy {p['key_name']}`\n\n"
+                msg += f"🔸 **{p['display_name']}** (${p['price_usd']})\n   👉 `.buy {p['key_name']}`\n\n"
         else:
-            msg += "⚠️ No hay productos aún."
+            msg += "⚠️ No hay productos disponibles."
         return await event.reply(msg)
 
-    # 2. Facturación
+    # CASO 2: CON ARGUMENTO (FACTURA)
     product = await db.get_product(key.lower())
-    if not product:
-        return await event.reply("❌ Producto no encontrado.")
+    if not product: return await event.reply("❌ Producto no encontrado.")
 
     import uuid
     order_id = str(uuid.uuid4())[:8]
     amount = float(product['price_usd'])
     
-    msg_wait = await event.reply(f"🔄 Conectando Oxapay (${amount})...")
+    msg_wait = await event.reply(f"🔄 Creando factura de ${amount}...")
     invoice = create_invoice(amount, order_id, f"Compra: {product['display_name']}")
     
     if invoice:
         await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
         await msg_wait.edit(
-            f"💳 **FACTURA GENERADA**\n"
-            f"📦 {product['display_name']}\n"
-            f"💵 **${amount} USD**\n\n"
+            f"💳 **FACTURA GENERADA**\n📦 {product['display_name']}\n💵 **${amount} USD**\n\n"
             f"🔗 **[PAGAR AQUÍ (USDT/BTC/LTC)]({invoice['url']})**\n\n"
             f"⏳ Tienes 60 minutos."
         )
     else:
-        await msg_wait.edit("❌ Error API Pagos (Revisa tu API Key).")
+        await msg_wait.edit("❌ Error en pasarela de pagos.")
 
-# --- .ADD (ADMIN) ---
+# ---------------------------------------------
+# 👮‍♂️ 4. COMANDOS ADMIN (.add .del)
+# ---------------------------------------------
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
-    if not db.pool: return await event.edit("❌ DB Desconectada.")
     try:
         args = event.pattern_match.group(1).split('|')
+        if len(args) < 3: return await event.edit("❌ Uso: `.add key | Nombre | $$ | Desc`")
+        
         k, n, p = args[0].strip().lower(), args[1].strip(), float(args[2].strip())
-        d = args[3].strip() if len(args) > 3 else "Sin descripción"
+        d = args[3].strip() if len(args) > 3 else "Sin desc"
         l = args[4].strip() if len(args) > 4 else "N/A"
 
         async with db.pool.acquire() as conn:
@@ -255,22 +289,32 @@ async def admin_add(event):
                    ON CONFLICT (key_name) DO UPDATE SET price_usd=$3, display_name=$2, description=$4""",
                 k, n, p, d, l
             )
-        await event.edit(f"✅ Agregado a DB: {n}")
-    except Exception as e:
-        await event.edit(f"❌ Error: {e}")
+        await event.edit(f"✅ Guardado: {n}")
+    except Exception as e: await event.edit(f"❌ Error: {e}")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.del\s+(.*)'))
+async def admin_del(event):
+    key = event.pattern_match.group(1).strip().lower()
+    if await db.delete_product(key):
+        await event.edit(f"🗑️ Producto borrado: {key}")
+    else:
+        await event.edit(f"⚠️ No encontré: {key}")
 
 # ==========================================
-# 🏁 RUN
+# 🏁 RUN + NOTIFICACIÓN
 # ==========================================
 async def main():
     print("🌍 Server Online...")
     start_server()
-    
-    print("🔌 Conectando DB...")
-    await db.connect() # ¡Esto creará las tablas si faltan!
-    
-    print("🚀 Bot Listo.")
+    await db.connect() 
+    print("🚀 Telegram Login...")
     await client.start()
+    
+    # Auto-Notificación de éxito
+    try:
+        await client.send_message("me", "🚀 **BOT INICIADO CORRECTAMENTE**\n✅ DB: Conectada\n✅ Comandos: Listos")
+    except: pass
+    
     await client.run_until_disconnected()
 
 if __name__ == '__main__':
