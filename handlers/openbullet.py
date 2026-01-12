@@ -20,10 +20,8 @@ def ob_api_request(method, endpoint, data=None):
         else:
             return None, 500
             
-        # La API de OB a veces devuelve 204 No Content en Updates
         if r.status_code == 204:
             return {}, 204
-            
         try:
             return r.json(), r.status_code
         except:
@@ -31,116 +29,138 @@ def ob_api_request(method, endpoint, data=None):
     except Exception as e:
         return str(e), 500
 
+async def temp_message(event, text, delay=3):
+    """Envía un mensaje y lo borra a los X segundos"""
+    msg = await event.respond(text, parse_mode='md')
+    await asyncio.sleep(delay)
+    await msg.delete()
+
 # --- HANDLER: .redeem ---
 async def handler_redeem(event):
-    # Cualquiera puede redimir, no usamos can_run_command estricto
     args = event.pattern_match.group(1)
+    # Borramos el mensaje del usuario INSTANTÁNEAMENTE por seguridad
+    await event.delete()
+
     if not args:
-        msg = await event.reply("❌ Usage: `.redeem [API_KEY]`")
-        await asyncio.sleep(5)
-        await msg.delete()
-        await event.delete()
+        await temp_message(event, "❌ Usage: `.redeem [API_KEY]`")
         return
 
     api_key = args.strip()
     user_id = event.sender_id
     
-    # 1. Verificar si el usuario ya tiene una key (opcional, si quieres permitir 1 por usuario)
+    # 1. Verificar duplicados
     existing_key = await db.get_license(user_id)
     if existing_key:
-        msg = await event.reply(f"⚠️ You already have a key: `{existing_key}`")
-        await asyncio.sleep(5)
-        await msg.delete()
+        await temp_message(event, "⚠️ You already have a key assigned.")
         return
 
-    # 2. Verificar si la key ya fue canjeada por otro
     if await db.is_key_redeemed(api_key):
-        msg = await event.reply("❌ This key is already redeemed by someone else.")
-        await asyncio.sleep(5)
-        await msg.delete()
+        await temp_message(event, "❌ This key is already in use.")
         return
 
-    wait_msg = await event.reply("🔄 Verifying Key with Server...")
+    # Mensaje temporal de espera
+    wait_msg = await event.respond("🔄 Verifying...")
 
-    # 3. Consultar a SmarterASP si la key existe
+    # 2. Verificar en OB
     user_data, status = ob_api_request('GET', f"users/{api_key}")
 
-    if status == 404:
-        await wait_msg.edit("❌ **Invalid Key.** Not found on server.")
-        return
-    elif status != 200:
-        await wait_msg.edit(f"❌ **Server Error:** Code {status}")
+    if status != 200:
+        await wait_msg.delete()
+        await temp_message(event, "❌ **Invalid Key.**")
         return
 
-    # 4. Si es válida, guardamos en Neon y Reseteamos IP
+    # 3. Canjear y Resetear IP
     if await db.redeem_license(user_id, api_key):
-        # Reset IP to default
         default_ip = "127.102.23.52"
-        # Necesitamos enviar los grupos actuales para no borrarlos
         groups = user_data.get('groups', [])
         
-        update_data = {
-            "key": api_key,
-            "iPs": [default_ip],
-            "groups": groups
-        }
-        
+        update_data = {"key": api_key, "iPs": [default_ip], "groups": groups}
         _, up_status = ob_api_request('PUT', f"users/{api_key}", update_data)
         
-        await event.delete() # Borramos el mensaje del usuario con la key
-        
+        await wait_msg.delete()
         if up_status in [200, 204]:
-            await wait_msg.edit(f"✅ **SUCCESS!**\nKey redeemed successfully.\nIP Reset to `{default_ip}`")
+            # MENSAJE GENÉRICO (SIN KEY NI IP)
+            await temp_message(event, "✅ **SUCCESS!** License redeemed & IP Reset.")
         else:
-            await wait_msg.edit(f"✅ **SUCCESS!**\nKey redeemed, but IP reset failed (Error {up_status}).")
+            await temp_message(event, "✅ **SUCCESS!** License redeemed (IP Reset failed).")
     else:
-        await wait_msg.edit("❌ **Database Error.** Could not save license.")
+        await wait_msg.delete()
+        await temp_message(event, "❌ **Database Error.**")
 
 # --- HANDLER: .changeip ---
 async def handler_changeip(event):
     args = event.pattern_match.group(1)
+    await event.delete() # Borrar mensaje del usuario
+
     if not args:
-        msg = await event.reply("❌ Usage: `.changeip [NEW_IP]`")
-        await asyncio.sleep(5)
-        await msg.delete()
-        await event.delete()
+        await temp_message(event, "❌ Usage: `.changeip [NEW_IP]`")
         return
 
-    new_ip = args.strip()
+    parts = args.split()
+    
+    # 🕵️‍♂️ MODO ADMIN: .changeip [KEY] [IP]
+    # Solo si el usuario es el dueño del bot (checked by can_run_command logic usually, or explicit check)
+    is_admin = await can_run_command(event) 
+    
+    if len(parts) == 2 and is_admin:
+        # Modo Dios: Cambiar IP de CUALQUIER Key
+        target_key = parts[0].strip()
+        new_ip = parts[1].strip()
+        
+        # Obtener datos para preservar grupos
+        user_data, status = ob_api_request('GET', f"users/{target_key}")
+        if status != 200:
+            await temp_message(event, "❌ Admin: Invalid Key.")
+            return
+            
+        groups = user_data.get('groups', [])
+        update_data = {"key": target_key, "iPs": [new_ip], "groups": groups}
+        
+        _, up_status = ob_api_request('PUT', f"users/{target_key}", update_data)
+        
+        if up_status in [200, 204]:
+            await temp_message(event, "✅ **ADMIN:** Target IP Updated.")
+        else:
+            await temp_message(event, "❌ **ADMIN:** Update Failed.")
+        return
+
+    # 👤 MODO USUARIO: .changeip [IP]
+    new_ip = parts[0].strip()
     user_id = event.sender_id
 
-    # 1. Buscar la key del usuario en Neon
+    # 1. Buscar licencia
     api_key = await db.get_license(user_id)
-    
     if not api_key:
-        msg = await event.reply("❌ You don't have a license. Use `.redeem [KEY]` first.")
-        await asyncio.sleep(5)
-        await msg.delete()
-        await event.delete()
+        await temp_message(event, "❌ License not found. Use `.redeem`.")
         return
 
-    wait_msg = await event.reply("🔄 Updating IP...")
+    # 2. CHEQUEO DE COOLDOWN (7 DÍAS)
+    can_change = await db.can_change_ip(user_id)
+    if can_change is not True:
+        # can_change contiene el texto del tiempo restante
+        await temp_message(event, f"⏳ **Cooldown Active.** Wait: {can_change}")
+        return
 
-    # 2. Obtener datos actuales (para preservar grupos)
+    wait_msg = await event.respond("🔄 Updating...")
+
+    # 3. Actualizar en OB
     user_data, status = ob_api_request('GET', f"users/{api_key}")
-    
     if status != 200:
-        await wait_msg.edit("❌ **Error:** Could not fetch user data from server.")
+        await wait_msg.delete()
+        await temp_message(event, "❌ Server Error.")
         return
 
-    # 3. Actualizar IP
     groups = user_data.get('groups', [])
-    update_data = {
-        "key": api_key,
-        "iPs": [new_ip],
-        "groups": groups
-    }
+    update_data = {"key": api_key, "iPs": [new_ip], "groups": groups}
     
     _, up_status = ob_api_request('PUT', f"users/{api_key}", update_data)
     
-    await event.delete()
+    await wait_msg.delete()
 
     if up_status in [200, 204]:
-        await wait_msg.edit(f"✅ **IP UPDATED!**\nNew IP: `{new_ip}`")
+        # 4. ACTUALIZAR TIMESTAMP EN DB
+        await db.update_ip_cooldown(user_id)
+        # MENSAJE GENÉRICO (SIN IP)
+        await temp_message(event, "✅ **SUCCESS!** Your IP has been updated.")
     else:
-        await wait_msg.edit(f"❌ **FAILED:** Server returned code {up_status}")
+        await temp_message(event, "❌ Failed to update IP.")
