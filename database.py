@@ -1,15 +1,14 @@
 import asyncpg
-from config import DB_URL
+import config
 
 class Database:
-    def __init__(self, db_url):
-        self.db_url = db_url
+    def __init__(self):
+        self.db_url = config.DB_URL
         self.pool = None
 
     async def connect(self):
         if not self.pool:
             try:
-                # Fix Neon SSL
                 url_clean = self.db_url.split('?')[0]
                 self.pool = await asyncpg.create_pool(url_clean, ssl='require')
                 await self.init_tables()
@@ -19,6 +18,8 @@ class Database:
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
+            # ... (Tablas products, orders y settings IGUAL QUE ANTES) ...
+            
             # Tabla Productos
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS products (
@@ -34,7 +35,7 @@ class Database:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id TEXT PRIMARY KEY,
-                    oxapay_track_id BIGINT, 
+                    oxapay_track_id TEXT, 
                     user_id BIGINT,
                     product_key TEXT,
                     amount_usd NUMERIC(10, 2),
@@ -42,23 +43,26 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            # [NUEVO] Tabla Settings (Para guardar URLs de status)
+            # Tabla Settings
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
                     key_name TEXT PRIMARY KEY,
                     value TEXT
                 );
             """)
-            
-            # Insertar URLs por defecto si no existen
+
+            # 🆕 NUEVA TABLA: LICENCIAS
             await conn.execute("""
-                INSERT INTO settings (key_name, value) VALUES 
-                ('url_svb', 'https://cloudfig6-001-site1.qtempurl.com/top/api/Configs'),
-                ('url_ob2', 'https://cloudfigob-001-site1.anytempurl.com')
-                ON CONFLICT DO NOTHING;
+                CREATE TABLE IF NOT EXISTS licenses (
+                    user_id BIGINT PRIMARY KEY,
+                    api_key TEXT UNIQUE NOT NULL,
+                    redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
 
-    # --- MÉTODOS DE PRODUCTOS ---
+    # ... (Métodos get_product, create_order, etc. MANTENERLOS IGUAL) ...
+    # ... Pega aquí abajo los métodos que ya tenías y añade estos nuevos:
+
     async def get_product(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -68,16 +72,15 @@ class Database:
         if not self.pool: return []
         async with self.pool.acquire() as conn:
             return await conn.fetch("SELECT * FROM products")
-            
+
     async def create_order(self, order_id, track_id, user_id, product_key, amount):
         if not self.pool: return
-        try: track_id_int = int(track_id)
-        except: track_id_int = 0
+        track_id_str = str(track_id)
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO orders (order_id, oxapay_track_id, user_id, product_key, amount_usd) 
                    VALUES ($1, $2, $3, $4, $5)""",
-                order_id, track_id_int, user_id, product_key, amount
+                order_id, track_id_str, user_id, product_key, amount
             )
 
     async def update_product(self, key, field, value):
@@ -99,7 +102,6 @@ class Database:
             res = await conn.execute("DELETE FROM products WHERE key_name = $1", key)
             return res != "DELETE 0"
 
-    # --- [NUEVOS] MÉTODOS PARA SETTINGS (URLs) ---
     async def get_setting(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -115,4 +117,29 @@ class Database:
             """, key, value)
             return True
 
-db = Database(DB_URL)
+    # 🆕 MÉTODOS DE LICENCIAS
+    async def get_license(self, user_id):
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT api_key FROM licenses WHERE user_id = $1", user_id)
+            return row['api_key'] if row else None
+
+    async def is_key_redeemed(self, api_key):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT user_id FROM licenses WHERE api_key = $1", api_key)
+            return row is not None
+
+    async def redeem_license(self, user_id, api_key):
+        if not self.pool: return False
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO licenses (user_id, api_key) VALUES ($1, $2)", 
+                    user_id, api_key
+                )
+            return True
+        except:
+            return False
+
+db = Database()
