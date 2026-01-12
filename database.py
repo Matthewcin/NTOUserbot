@@ -1,5 +1,6 @@
 import asyncpg
 import config
+import time
 
 class Database:
     def __init__(self):
@@ -18,9 +19,7 @@ class Database:
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
-            # ... (Tablas products, orders y settings IGUAL QUE ANTES) ...
-            
-            # Tabla Productos
+            # Tablas existentes (Products, Orders, Settings)...
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id SERIAL PRIMARY KEY,
@@ -31,7 +30,6 @@ class Database:
                     file_url TEXT
                 );
             """)
-            # Tabla Ordenes
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id TEXT PRIMARY KEY,
@@ -43,7 +41,6 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            # Tabla Settings
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
                     key_name TEXT PRIMARY KEY,
@@ -51,18 +48,22 @@ class Database:
                 );
             """)
 
-            # 🆕 NUEVA TABLA: LICENCIAS
+            # 🆕 TABLA LICENCIAS (Con columna de Cooldown)
+            # Agregamos last_ip_change si no existe
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS licenses (
                     user_id BIGINT PRIMARY KEY,
                     api_key TEXT UNIQUE NOT NULL,
-                    redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_ip_change TIMESTAMP
                 );
             """)
+            # Migración automática por si la tabla ya existía sin esa columna
+            try:
+                await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
+            except: pass
 
-    # ... (Métodos get_product, create_order, etc. MANTENERLOS IGUAL) ...
-    # ... Pega aquí abajo los métodos que ya tenías y añade estos nuevos:
-
+    # --- MÉTODOS ANTERIORES (Get Product, etc) ---
     async def get_product(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -117,7 +118,7 @@ class Database:
             """, key, value)
             return True
 
-    # 🆕 MÉTODOS DE LICENCIAS
+    # --- MÉTODOS DE LICENCIAS ---
     async def get_license(self, user_id):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -141,5 +142,37 @@ class Database:
             return True
         except:
             return False
+
+    # 🆕 NUEVOS MÉTODOS PARA COOLDOWN (7 DÍAS)
+    async def can_change_ip(self, user_id):
+        """Retorna True si han pasado 7 días, o el tiempo restante en texto."""
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT last_ip_change FROM licenses WHERE user_id = $1", user_id)
+            if not row or not row['last_ip_change']:
+                return True # Nunca ha cambiado, permiso concedido
+            
+            last_change = row['last_ip_change']
+            now = time.time()
+            # Convertimos timestamp de DB a segundos si es necesario, o usamos datetime
+            # asyncpg devuelve datetime objects. Convertimos a timestamp.
+            last_ts = last_change.timestamp()
+            
+            diff = now - last_ts
+            seven_days = 7 * 24 * 60 * 60 # 604800 segundos
+            
+            if diff >= seven_days:
+                return True
+            else:
+                remaining = seven_days - diff
+                days = int(remaining // 86400)
+                hours = int((remaining % 86400) // 3600)
+                return f"{days} days, {hours} hours"
+
+    async def update_ip_cooldown(self, user_id):
+        """Actualiza la fecha del último cambio a AHORA"""
+        if not self.pool: return
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE licenses SET last_ip_change = NOW() WHERE user_id = $1", user_id)
 
 db = Database()
