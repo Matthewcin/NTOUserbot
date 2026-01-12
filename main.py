@@ -18,7 +18,7 @@ DB_URL = os.getenv('DB_URL')
 OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'WGJMFR-0DMVXO-IRCXPB-GDJHED')
 
 TARGET_GROUP = 'myConfigCloud'
-MY_USER_LINK = 'https://t.me/whois_tyler'
+MY_USER_LINK = 'https://t.me/Virusnto'
 
 # ==========================================
 # 🌐 WEB SERVER
@@ -68,11 +68,11 @@ class Database:
                     file_url TEXT
                 );
             """)
-            # Order Table - CHANGED oxapay_track_id TO TEXT FOR SAFETY
+            # Order Table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id TEXT PRIMARY KEY,
-                    oxapay_track_id TEXT, 
+                    oxapay_track_id BIGINT, 
                     user_id BIGINT,
                     product_key TEXT,
                     amount_usd NUMERIC(10, 2),
@@ -93,14 +93,18 @@ class Database:
 
     async def create_order(self, order_id, track_id, user_id, product_key, amount):
         if not self.pool: return
-        # Ensure track_id is treated as string to avoid BigInt errors
-        track_id_str = str(track_id)
         
+        # 🟢 FIX: Convertimos a Entero (int) porque tu DB espera BIGINT
+        try:
+            track_id_int = int(track_id)
+        except:
+            track_id_int = 0 # Fallback por seguridad
+            
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO orders (order_id, oxapay_track_id, user_id, product_key, amount_usd) 
                    VALUES ($1, $2, $3, $4, $5)""",
-                order_id, track_id_str, user_id, product_key, amount
+                order_id, track_id_int, user_id, product_key, amount
             )
 
     async def update_product(self, key, field, value):
@@ -248,7 +252,7 @@ async def cmd_request(event):
     await event.reply(f"✅ **Request Received:** {arg}\nI will consider it for future updates.")
 
 # ---------------------------------------------
-# 💳 BUY COMMAND (FIXED TYPE ERROR)
+# 💳 BUY COMMAND (FIXED INT TYPE)
 # ---------------------------------------------
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
@@ -283,7 +287,7 @@ async def cmd_buy(event):
         invoice = create_invoice(amount, order_id, f"Buy: {product['display_name']}")
         
         if invoice:
-            # FIX: We ensure we pass the data correctly handled in db.create_order
+            # FIX: We ensure we pass an INT, not a string
             await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
             
             await msg_wait.edit(
