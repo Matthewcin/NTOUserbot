@@ -132,11 +132,6 @@ async def cmd_status(event):
 
     # Usamos HTML para negritas <b> y formato
     final_msg = (
-        "📊 <b>SYSTEM STATUS REPORT</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🤖 <b>Bot System:</b> ✅ Online\n"
-        f"🛡️ <b>Database:</b> ✅ Connected\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
         f"☁️ <b>SVB Cloud:</b> {status_svb}\n"
         f"☁️ <b>OB2 Cloud:</b> {status_ob2}\n"
     )
