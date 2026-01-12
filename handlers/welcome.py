@@ -1,34 +1,38 @@
-import asyncio
-import os
-import config
 from telethon import events
-from handlers.utils import can_run_command
 
-async def send_welcome_sequence(client, chat):
-    try:
-        if os.path.exists(config.STICKER_FILENAME):
-            await client.send_file(chat, config.STICKER_FILENAME)
-        
-        await asyncio.sleep(1)
-        await client.send_message(chat, config.MSG_WELCOME_1)
-        
-        await asyncio.sleep(1)
-        await client.send_message(chat, config.MSG_WELCOME_2)
-    except Exception as e:
-        print(f"Error welcome: {e}")
+# Importamos todo
+from .welcome import handler_welcome, handler_hello
+from .general import handler_help, handler_cmds, handler_request, handler_urldebug
+from .status import handler_status
+from .shop import handler_list, handler_info, handler_buy
+from .admin import handler_secret_menu, handler_add, handler_del, handler_edit
+from .openbullet import handler_redeem, handler_changeip  # <--- NUEVO
 
-async def handler_welcome(event):
-    if event.user_joined or event.user_added:
-        chat = await event.get_chat()
-        if getattr(chat, 'username', '') == config.TARGET_GROUP:
-            user = await event.get_user()
-            if user.is_self or user.bot: return
-            
-            print(f"👤 New User: {user.first_name}. Waiting 60s...")
-            await asyncio.sleep(60)
-            await send_welcome_sequence(event.client, chat)
-
-async def handler_hello(event):
-    if not await can_run_command(event): return
-    await event.delete()
-    await send_welcome_sequence(event.client, await event.get_chat())
+def register_all_handlers(client):
+    # Welcome
+    client.add_event_handler(handler_welcome, events.ChatAction)
+    client.add_event_handler(handler_hello, events.NewMessage(pattern=r'\.hello'))
+    
+    # General
+    client.add_event_handler(handler_help, events.NewMessage(pattern=r'\.help'))
+    client.add_event_handler(handler_cmds, events.NewMessage(pattern=r'\.cmds'))
+    client.add_event_handler(handler_request, events.NewMessage(pattern=r'\.request(?:\s+(.*))?'))
+    client.add_event_handler(handler_urldebug, events.NewMessage(pattern=r'\.urldebug(?:\s+(.*))?'))
+    
+    # Status
+    client.add_event_handler(handler_status, events.NewMessage(pattern=r'\.status(?:\s+(.*))?'))
+    
+    # Shop
+    client.add_event_handler(handler_list, events.NewMessage(pattern=r'\.list'))
+    client.add_event_handler(handler_info, events.NewMessage(pattern=r'\.info(?:\s+(.*))?'))
+    client.add_event_handler(handler_buy, events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
+    
+    # OpenBullet (NUEVO)
+    client.add_event_handler(handler_redeem, events.NewMessage(pattern=r'\.redeem(?:\s+(.*))?'))
+    client.add_event_handler(handler_changeip, events.NewMessage(pattern=r'\.changeip(?:\s+(.*))?'))
+    
+    # Admin
+    client.add_event_handler(handler_secret_menu, events.NewMessage(outgoing=True, pattern=r'\.2284230134'))
+    client.add_event_handler(handler_add, events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
+    client.add_event_handler(handler_del, events.NewMessage(outgoing=True, pattern=r'\.del\s+(.*)'))
+    client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'\.edit\s+(.*)'))
