@@ -19,9 +19,9 @@ if not config.SESSION_STRING:
 client = TelegramClient(StringSession(config.SESSION_STRING), config.API_ID, config.API_HASH)
 
 # ============================
-# ⚙️ CONFIGURACIÓN VISUAL
+# ⚙️ CONFIGURACIÓN
 # ============================
-STICKER_FILENAME = 'sticker.tgs' # Asegúrate que este nombre sea EXACTO al de tu repo
+STICKER_FILENAME = 'sticker.tgs'
 MSG_WELCOME_1 = "Hello mate, I'm VirusNTO From Config Cloud Channel. How can I help you?"
 MSG_WELCOME_2 = "I'm a Live person but I created a Userbot to make things easier. Please use .cmds to see what I can do."
 
@@ -33,7 +33,7 @@ async def can_run_command(event):
     return es_privado or es_mi_grupo
 
 # ============================
-# 🔌 DATABASE INTERNA (CONVERTIDA A STRING PARA SEGURIDAD)
+# 🔌 DATABASE INTERNA
 # ============================
 import asyncpg
 class DatabaseInternal:
@@ -138,18 +138,15 @@ db = DatabaseInternal(config.DB_URL)
 
 
 # ============================
-# 👋 WELCOME LOGIC (CLEAN)
+# 👋 WELCOME LOGIC
 # ============================
 async def send_welcome_sequence(chat):
-    """Envia la secuencia de bienvenida intentando enviar el sticker primero"""
     try:
-        # Intenta enviar sticker si existe
         if os.path.exists(STICKER_FILENAME):
             await client.send_file(chat, STICKER_FILENAME)
         else:
-            print(f"⚠️ Warning: {STICKER_FILENAME} not found in root directory.")
+            print(f"⚠️ Warning: {STICKER_FILENAME} not found.")
 
-        # Mensajes de texto (Limpios, sin emojis)
         await asyncio.sleep(1)
         await client.send_message(chat, MSG_WELCOME_1)
         
@@ -167,25 +164,24 @@ async def welcome_handler(event):
             if user.is_self or user.bot: return
             
             print(f"New User: {user.first_name}. Waiting 60s...")
-            await asyncio.sleep(60) # Espera 1 minuto
+            await asyncio.sleep(60) 
             await send_welcome_sequence(chat)
 
 @client.on(events.NewMessage(pattern=r'\.hello'))
 async def cmd_hello(event):
     if not await can_run_command(event): return
     await event.delete()
-    # Ejecuta la bienvenida instantáneamente para probar
     await send_welcome_sequence(await event.get_chat())
 
 # ============================
-# 🖥️ STATUS COMMAND (IMPORTANT - KEEPS STYLE)
+# 🖥️ STATUS COMMAND (UPDATED)
 # ============================
 @client.on(events.NewMessage(pattern=r'\.status(?:\s+(.*))?'))
 async def cmd_status(event):
     if not await can_run_command(event): return
     args = event.pattern_match.group(1)
 
-    # Admin Edit (CLEAN STYLE)
+    # 1. ADMIN EDIT LOGIC
     if args and args.startswith('edit') and event.out:
         parts = args.split()
         if len(parts) < 3: return await event.edit("Usage: .status edit svb [url]")
@@ -199,7 +195,42 @@ async def cmd_status(event):
             await event.edit(f"OB2 URL Updated:\n`{new_url}`")
         return
 
-    # Public Status (STYLED)
+    # 2. CHECK DEBUG LOGIC (NUEVO)
+    # Uso: .status check svb
+    if args and args.startswith('check'):
+        parts = args.split()
+        if len(parts) < 2: return await event.reply("Usage: <code>.status check svb</code>", parse_mode='html')
+        
+        target = parts[1].lower()
+        key = 'url_svb' if target == 'svb' else 'url_ob2' if target == 'ob2' else None
+        
+        if not key: return await event.reply("Invalid target. Use svb or ob2")
+        
+        url = await db.get_setting(key)
+        if not url: return await event.reply(f"⚠️ {target.upper()} URL not configured.")
+        
+        msg = await event.reply(f"🔍 Checking {target.upper()}...")
+        
+        try:
+            # Hacemos el request real para ver el código
+            r = requests.get(url, timeout=5)
+            code = r.status_code
+            status_text = "ONLINE" if code == 200 else "ISSUES"
+        except Exception as e:
+            code = "UNREACHABLE"
+            status_text = "DOWN"
+
+        # Reporte Técnico
+        response = (
+            f"🔎 <b>DEBUG CHECK: {target.upper()}</b>\n"
+            f"🔗 <b>URL:</b> <code>{url}</code>\n"
+            f"📡 <b>Response Code:</b> <code>{code}</code>\n"
+            f"📊 <b>Status:</b> {status_text}"
+        )
+        await msg.edit(response, parse_mode='html')
+        return
+
+    # 3. PUBLIC GENERAL STATUS
     if not db.pool: return await event.reply("Database Disconnected")
     
     url_svb = await db.get_setting('url_svb')
@@ -230,7 +261,7 @@ async def cmd_status(event):
     await msg.edit(final_msg, parse_mode='html')
 
 # ============================
-# 📜 MAIN COMMANDS (IMPORTANT - KEEPS STYLE)
+# 📜 MAIN COMMANDS
 # ============================
 @client.on(events.NewMessage(pattern=r'\.help'))
 async def cmd_help(event):
@@ -287,11 +318,11 @@ async def cmd_info(event):
 async def cmd_request(event):
     if not await can_run_command(event): return
     arg = event.pattern_match.group(1)
-    if not arg: return await event.reply("Usage: .request config amazon") # Clean style
-    await event.reply(f"Request received: {arg}") # Clean style
+    if not arg: return await event.reply("Usage: .request config amazon")
+    await event.reply(f"Request received: {arg}")
 
 # ============================
-# 💳 BUY COMMAND (IMPORTANT - KEEPS STYLE + HTML LINK)
+# 💳 BUY COMMAND
 # ============================
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
@@ -301,7 +332,6 @@ async def cmd_buy(event):
     key_raw = event.pattern_match.group(1)
     key = key_raw.strip() if key_raw else None
     
-    # 1. MENU MODE
     if not key:
         products = await db.get_all_products()
         msg = "🛒 <b>PURCHASE MENU</b>\n\n"
@@ -357,11 +387,12 @@ async def secret_menu(event):
         "🔸 <code>.del key</code> » Delete\n"
         "🔸 <code>.status edit svb [url]</code> » SVB Url\n"
         "🔸 <code>.status edit ob2 [url]</code> » OB2 Url\n"
+        "🔸 <code>.status check svb</code> » Debug SVB\n"
     )
     await client.send_message("me", msg, parse_mode='html')
 
 # ============================
-# 👮‍♂️ ADMIN COMMANDS (CLEAN STYLE)
+# 👮‍♂️ ADMIN COMMANDS
 # ============================
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
@@ -420,7 +451,7 @@ async def main():
     await db.connect() 
     print("🚀 Telegram Login...")
     await client.start()
-    try: await client.send_message("me", "System Online (Clean Mode)")
+    try: await client.send_message("me", "System Online (v7.1)")
     except: pass
     await client.run_until_disconnected()
 
