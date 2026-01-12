@@ -2,6 +2,7 @@ import asyncio
 import uuid
 import requests
 import time
+import os
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -17,12 +18,70 @@ if not config.SESSION_STRING:
 
 client = TelegramClient(StringSession(config.SESSION_STRING), config.API_ID, config.API_HASH)
 
+# Constantes de Bienvenida
+STICKER_WELCOME = 'sticker.tgs'
+MSG_WELCOME_1 = "Hello mate, I'm VirusNTO From Config Cloud Channel. How can I help you?"
+MSG_WELCOME_2 = "I'm a Live person but I created a Userbot to make things easier. Please use `.cmds` to see what I can do."
+
 async def can_run_command(event):
     if event.out: return True
     chat = await event.get_chat()
     es_privado = event.is_private
     es_mi_grupo = (getattr(chat, 'username', '') == config.TARGET_GROUP)
     return es_privado or es_mi_grupo
+
+# ============================
+# 👋 WELCOME HANDLER (AUTOMATIC)
+# ============================
+@client.on(events.ChatAction)
+async def welcome_handler(event):
+    if event.user_joined or event.user_added:
+        chat = await event.get_chat()
+        
+        if getattr(chat, 'username', '') == config.TARGET_GROUP:
+            user = await event.get_user()
+            if user.is_self or user.bot: return
+            
+            print(f"👤 New User: {user.first_name}. Waiting 60s to send welcome...")
+            
+            # ⏳ ESPERA DE 1 MINUTO
+            await asyncio.sleep(60)
+            
+            try:
+                # 1. Sticker
+                if os.path.exists(STICKER_WELCOME):
+                    await client.send_file(chat, STICKER_WELCOME)
+                
+                # 2. Mensaje 1
+                await asyncio.sleep(2)
+                await client.send_message(chat, MSG_WELCOME_1)
+                
+                # 3. Mensaje 2
+                await asyncio.sleep(2)
+                await client.send_message(chat, MSG_WELCOME_2)
+                
+            except Exception as e:
+                print(f"❌ Error sending welcome: {e}")
+
+# ============================
+# 👋 MANUAL WELCOME TEST (.hello)
+# ============================
+@client.on(events.NewMessage(pattern=r'\.hello'))
+async def cmd_hello(event):
+    if not await can_run_command(event): return
+    
+    # Este comando ejecuta la secuencia INMEDIATAMENTE para testear
+    chat = await event.get_chat()
+    await event.delete() # Borra el comando .hello
+    
+    if os.path.exists(STICKER_WELCOME):
+        await client.send_file(chat, STICKER_WELCOME)
+    
+    await asyncio.sleep(1)
+    await client.send_message(chat, MSG_WELCOME_1)
+    
+    await asyncio.sleep(1)
+    await client.send_message(chat, MSG_WELCOME_2)
 
 # ============================
 # 🖥️ STATUS COMMAND
@@ -33,51 +92,11 @@ async def cmd_status(event):
 
     args = event.pattern_match.group(1)
 
-    # 🟢 MODO 1: VER ESTADO
-    if not args or not args.startswith('edit'):
-        if not db.pool: return await event.reply("❌ Database Disconnected")
-        
-        url_svb = await db.get_setting('url_svb')
-        url_ob2 = await db.get_setting('url_ob2')
-        
-        msg = await event.reply("🔄 **Checking Server Status...**")
-        
-        def check_server(url, name):
-            if not url: return "⚠️ Not Configured"
-            try:
-                start = time.time()
-                r = requests.get(url, timeout=5)
-                ping = int((time.time() - start) * 1000)
-                if r.status_code == 200:
-                    return f"✅ **ONLINE** ({ping}ms)"
-                else:
-                    return f"❌ **OFFLINE** (Code: {r.status_code})"
-            except:
-                return "❌ **DOWN** (No response)"
-
-        status_svb = check_server(url_svb, "SVB")
-        status_ob2 = check_server(url_ob2, "OB2")
-
-        final_msg = (
-            "📊 **SYSTEM STATUS REPORT**\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🤖 **Bot System:** ✅ Online\n"
-            f"🛡️ **Database:** ✅ Connected\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"☁️ **SVB Cloud:** {status_svb}\n"
-            f"☁️ **OB2 Cloud:** {status_ob2}\n"
-        )
-        await msg.edit(final_msg)
-        return
-
-    # 🔴 MODO 2: EDITAR URLS
-    if event.out:
+    # ADMIN EDIT LOGIC (Hidden here or separate)
+    if args and args.startswith('edit') and event.out:
         parts = args.split()
-        if len(parts) < 3:
-            return await event.edit("❌ Usage: `.status edit svb https://new-url.com`\nTypes: `svb` or `ob2`")
-            
-        target = parts[1].lower()
-        new_url = parts[2]
+        if len(parts) < 3: return await event.edit("❌ Usage: `.status edit svb [url]`")
+        target, new_url = parts[1].lower(), parts[2]
         
         if target == 'svb':
             await db.set_setting('url_svb', new_url)
@@ -85,39 +104,65 @@ async def cmd_status(event):
         elif target == 'ob2':
             await db.set_setting('url_ob2', new_url)
             await event.edit(f"✅ **OB2 URL Updated:**\n`{new_url}`")
-        else:
-            await event.edit("❌ Invalid Type. Use `svb` or `ob2`.")
+        return
+
+    # PUBLIC STATUS CHECK
+    if not db.pool: return await event.reply("❌ Database Disconnected")
+    
+    url_svb = await db.get_setting('url_svb')
+    url_ob2 = await db.get_setting('url_ob2')
+    
+    msg = await event.reply("🔄 **Checking Server Status...**")
+    
+    def check_server(url, name):
+        if not url: return "⚠️ Not Configured"
+        try:
+            start = time.time()
+            r = requests.get(url, timeout=5)
+            ping = int((time.time() - start) * 1000)
+            if r.status_code == 200:
+                return f"✅ <b>ONLINE</b> ({ping}ms)"
+            else:
+                return f"❌ <b>OFFLINE</b> (Code: {r.status_code})"
+        except:
+            return "❌ <b>DOWN</b> (No response)"
+
+    status_svb = check_server(url_svb, "SVB")
+    status_ob2 = check_server(url_ob2, "OB2")
+
+    # Usamos HTML para negritas <b> y formato
+    final_msg = (
+        "📊 <b>SYSTEM STATUS REPORT</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🤖 <b>Bot System:</b> ✅ Online\n"
+        f"🛡️ <b>Database:</b> ✅ Connected\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"☁️ <b>SVB Cloud:</b> {status_svb}\n"
+        f"☁️ <b>OB2 Cloud:</b> {status_ob2}\n"
+    )
+    await msg.edit(final_msg, parse_mode='html')
 
 # ============================
-# 📜 OTHER COMMANDS
+# 📜 PUBLIC COMMANDS
 # ============================
-
 @client.on(events.NewMessage(pattern=r'\.help'))
 async def cmd_help(event):
     if not await can_run_command(event): return
-    await event.reply("🆘 **HELP MENU**\nType `.cmds` to see available commands.")
+    await event.reply("🆘 <b>HELP MENU</b>\nType <code>.cmds</code> to see available commands.", parse_mode='html')
 
 @client.on(events.NewMessage(pattern=r'\.cmds'))
 async def cmd_cmds(event):
     if not await can_run_command(event): return
     msg = (
-        "🤖 **COMMAND LIST**\n━━━━━━━━━━━━━━━━\n"
-        "🔹 `.list` » View Catalog\n"
-        "🔹 `.info [item]` » Details\n"
-        "🔹 `.buy` » Purchase Menu\n"
-        "🔹 `.buy [item]` » Invoice\n"
-        "🔹 `.request [text]` » Request\n"
-        "🔹 `.status` » Check Server Health"
+        "🤖 <b>COMMAND LIST</b>\n━━━━━━━━━━━━━━━━\n"
+        "🔹 <code>.list</code> » View Catalog\n"
+        "🔹 <code>.info [item]</code> » Details\n"
+        "🔹 <code>.buy</code> » Purchase Menu\n"
+        "🔹 <code>.buy [item]</code> » Invoice\n"
+        "🔹 <code>.request [text]</code> » Request\n"
+        "🔹 <code>.status</code> » Check Server Health"
     )
-    if event.out: 
-        msg += (
-            "\n\n👮‍♂️ **ADMIN:**\n"
-            "🔸 `.add key|Name|$$|Desc`\n"
-            "🔸 `.edit key field value`\n"
-            "🔸 `.del key`\n"
-            "🔸 `.status edit svb [url]`"
-        )
-    await event.reply(msg)
+    await event.reply(msg, parse_mode='html')
 
 @client.on(events.NewMessage(pattern=r'\.list'))
 async def cmd_list(event):
@@ -125,27 +170,28 @@ async def cmd_list(event):
     if not db.pool: return await event.reply("❌ Database Error")
     
     products = await db.get_all_products()
-    msg = "📂 **CATALOG**\n\n"
+    msg = "📂 <b>CATALOG</b>\n\n"
     if products:
         for p in products:
-            msg += f"🔹 **{p['display_name']}**\n   💰 ${p['price_usd']} USD | Key: `{p['key_name']}`\n\n"
+            msg += f"🔹 <b>{p['display_name']}</b>\n   💰 ${p['price_usd']} USD | Key: <code>{p['key_name']}</code>\n\n"
     else:
         msg += "⚠️ Empty Catalog.\n"
-    msg += "ℹ️ Type `.buy [key]` to purchase."
-    await event.reply(msg)
+    msg += "ℹ️ Type <code>.buy [key]</code> to purchase."
+    await event.reply(msg, parse_mode='html')
 
 @client.on(events.NewMessage(pattern=r'\.info(?:\s+(.*))?'))
 async def cmd_info(event):
     if not await can_run_command(event): return
     arg = event.pattern_match.group(1)
-    if not arg: return await event.reply("ℹ️ Usage: `.info ebook`")
+    if not arg: return await event.reply("ℹ️ Usage: <code>.info ebook</code>", parse_mode='html')
 
     product = await db.get_product(arg.lower())
     if product:
         await event.reply(
-            f"📘 **INFO: {product['display_name']}**\n━━━━━━━━━━━━━━━━\n"
+            f"📘 <b>INFO: {product['display_name']}</b>\n━━━━━━━━━━━━━━━━\n"
             f"📝 {product['description']}\n\n"
-            f"💵 Price: **${product['price_usd']} USD**\n👉 To Buy: `.buy {product['key_name']}`"
+            f"💵 Price: <b>${product['price_usd']} USD</b>\n👉 To Buy: <code>.buy {product['key_name']}</code>",
+            parse_mode='html'
         )
     else:
         await event.reply("❌ Product not found.")
@@ -154,11 +200,11 @@ async def cmd_info(event):
 async def cmd_request(event):
     if not await can_run_command(event): return
     arg = event.pattern_match.group(1)
-    if not arg: return await event.reply("📝 Usage: `.request config amazon`")
-    await event.reply(f"✅ **Request Received:** {arg}")
+    if not arg: return await event.reply("📝 Usage: <code>.request config amazon</code>", parse_mode='html')
+    await event.reply(f"✅ <b>Request Received:</b> {arg}", parse_mode='html')
 
 # ============================
-# 💳 BUY COMMAND (FIXED LINK)
+# 💳 BUY COMMAND (HTML FIX)
 # ============================
 @client.on(events.NewMessage(pattern=r'\.buy(?:\s+(.*))?'))
 async def cmd_buy(event):
@@ -171,13 +217,13 @@ async def cmd_buy(event):
     # 1. MENU MODE
     if not key:
         products = await db.get_all_products()
-        msg = "🛒 **PURCHASE MENU**\n\n"
+        msg = "🛒 <b>PURCHASE MENU</b>\n\n"
         if products:
             for p in products:
-                msg += f"🔸 **{p['display_name']}** (${p['price_usd']})\n   👉 `.buy {p['key_name']}`\n\n"
+                msg += f"🔸 <b>{p['display_name']}</b> (${p['price_usd']})\n   👉 <code>.buy {p['key_name']}</code>\n\n"
         else:
             msg += "⚠️ No products available."
-        return await event.reply(msg)
+        return await event.reply(msg, parse_mode='html')
 
     # 2. INVOICE MODE
     try:
@@ -194,16 +240,18 @@ async def cmd_buy(event):
         if invoice:
             await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
             
-            # 👇 AQUI ESTA EL ARREGLO: parse_mode='md'
+            # 👇 AQUI USAMOS HTML <a href> PARA QUE EL LINK FUNCIONE SIEMPRE
+            link_html = f"<a href='{invoice['url']}'>🔗 PAY NOW - CLICK HERE</a>"
+            
             await msg_wait.edit(
-                f"💳 **INVOICE GENERATED**\n"
+                f"💳 <b>INVOICE GENERATED</b>\n"
                 f"📦 Item: {product['display_name']}\n"
-                f"💵 Total: **${amount} USD**\n\n"
-                f"🔗 **[PAY NOW - CLICK HERE]({invoice['url']})**\n\n"
+                f"💵 Total: <b>${amount} USD</b>\n\n"
+                f"{link_html}\n\n"
                 f"⏳ Valid for 60m.\n"
                 f"ℹ️ Send proof after payment.",
-                link_preview=False,
-                parse_mode='md' 
+                parse_mode='html',
+                link_preview=False
             )
         else:
             await msg_wait.edit("❌ Payment Gateway Error.")
@@ -211,7 +259,26 @@ async def cmd_buy(event):
         await event.reply(f"❌ Error: {e}")
 
 # ============================
-# 👮‍♂️ ADMIN COMMANDS
+# 🕵️‍♂️ SECRET ADMIN MENU
+# ============================
+@client.on(events.NewMessage(outgoing=True, pattern=r'\.2284230134'))
+async def secret_menu(event):
+    await event.delete()
+    msg = (
+        "🕵️‍♂️ <b>SECRET ADMIN PANEL</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔸 <code>.add key|Name|$$|Desc</code> » Add Product\n"
+        "🔸 <code>.edit key field value</code> » Edit Product\n"
+        "🔸 <code>.del key</code> » Delete Product\n"
+        "🔸 <code>.status edit svb [url]</code> » Update SVB URL\n"
+        "🔸 <code>.status edit ob2 [url]</code> » Update OB2 URL\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "⚠️ <i>These commands are hidden.</i>"
+    )
+    await client.send_message("me", msg, parse_mode='html')
+
+# ============================
+# 👮‍♂️ ADMIN COMMANDS (HIDDEN)
 # ============================
 @client.on(events.NewMessage(outgoing=True, pattern=r'\.add\s+(.*)'))
 async def admin_add(event):
@@ -254,7 +321,6 @@ async def admin_edit(event):
             return await client.send_message("me", "❌ Usage: `.edit key field value`")
         key, field = args[0].lower(), args[1].lower()
         value = " ".join(args[2:])
-        
         success = await db.update_product(key, field, value)
         await event.delete()
         await client.send_message("me", f"✅ Updated: {key}" if success else "❌ Failed.")
@@ -271,7 +337,7 @@ async def main():
     await db.connect() 
     print("🚀 Telegram Login...")
     await client.start()
-    try: await client.send_message("me", "🚀 **SYSTEM UPDATED (Links Fixed)**")
+    try: await client.send_message("me", "🚀 **SYSTEM UPDATED (HTML Mode)**")
     except: pass
     await client.run_until_disconnected()
 
