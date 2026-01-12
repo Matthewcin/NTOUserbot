@@ -2,21 +2,30 @@ import asyncio
 import os
 import config
 from telethon import events
+# 👇 IMPORTANTE: Importamos los tipos necesarios para "engañar" a Telegram Desktop
+from telethon.tl.types import DocumentAttributeSticker, InputStickerSetEmpty
 from handlers.utils import can_run_command
 
 async def send_welcome_sequence(client, entity):
     """
-    Envía la secuencia de bienvenida.
+    Envía la secuencia de bienvenida forzando los atributos de Sticker.
     """
     try:
         if os.path.exists(config.STICKER_FILENAME):
-            # 👇 SOLUCIÓN: Agregamos mime_type='application/x-tgsticker'
-            # Esto obliga a Telegram a renderizarlo como animación sí o sí.
+            # 👇 SOLUCIÓN DEFINITIVA PARA PC:
+            # Creamos el atributo que le dice a Telegram "Esto es un Sticker, no un archivo"
+            sticker_attr = DocumentAttributeSticker(
+                alt='👋',                     # Emoji alternativo (necesario)
+                stickerset=InputStickerSetEmpty(), # No pertenece a ningún pack
+                mask_coords=None
+            )
+
             await client.send_file(
                 entity, 
                 config.STICKER_FILENAME, 
                 force_document=False, 
-                mime_type='application/x-tgsticker'
+                mime_type='application/x-tgsticker',
+                attributes=[sticker_attr]     # <--- AQUÍ ESTÁ EL TRUCO
             )
         else:
             print(f"⚠️ Warning: {config.STICKER_FILENAME} not found.")
@@ -54,6 +63,6 @@ async def handler_hello(event):
     if not await can_run_command(event): return
     await event.delete()
     
-    # Test manual: Enviamos al chat actual para ver si el sticker funciona
+    # Test manual
     chat = await event.get_chat()
     await send_welcome_sequence(event.client, chat)
