@@ -17,7 +17,8 @@ def ob_api_request(method, endpoint, data=None):
         except: return r.text, r.status_code
     except Exception as e: return str(e), 500
 
-async def temp_message(event, text, delay=3):
+# 👇 CAMBIO: Delay por defecto aumentado a 6 segundos
+async def temp_message(event, text, delay=6):
     msg = await event.respond(text, parse_mode='md')
     await asyncio.sleep(delay)
     await msg.delete()
@@ -25,7 +26,7 @@ async def temp_message(event, text, delay=3):
 # --- REDEEM ---
 async def handler_redeem(event):
     args = event.pattern_match.group(1)
-    await event.delete()
+    await event.delete() # Borrado instantáneo del mensaje del usuario
 
     if not args:
         await temp_message(event, "❌ Usage: `.redeem [API_KEY]`")
@@ -34,42 +35,51 @@ async def handler_redeem(event):
     api_key = args.strip()
     user_id = event.sender_id
     
+    # 1. Validaciones locales
     existing_key = await db.get_license(user_id)
     if existing_key:
-        await temp_message(event, "⚠️ You already have a key.")
+        # No mostramos la key que ya tiene, solo avisamos
+        await temp_message(event, "⚠️ You already have a key assigned.")
         return
 
     if await db.is_key_redeemed(api_key):
-        await temp_message(event, "❌ Key already in use.")
+        await temp_message(event, "❌ This key is already in use.")
         return
 
-    wait_msg = await event.respond("🔄 Verifying...")
+    # Mensaje de espera (se borra rápido luego)
+    wait_msg = await event.respond("🔄 Processing...")
+
+    # 2. Verificar en Servidor OB
     user_data, status = ob_api_request('GET', f"users/{api_key}")
 
     if status != 200:
         await wait_msg.delete()
-        await temp_message(event, "❌ **Invalid Key.**")
+        await temp_message(event, "❌ **Invalid Key.** Check spelling.")
         return
 
+    # 3. Canjear
     if await db.redeem_license(user_id, api_key):
         default_ip = "127.102.23.52"
         groups = user_data.get('groups', [])
         update_data = {"key": api_key, "iPs": [default_ip], "groups": groups}
+        
         _, up_status = ob_api_request('PUT', f"users/{api_key}", update_data)
         
         await wait_msg.delete()
+        
         if up_status in [200, 204]:
-            await temp_message(event, "✅ **SUCCESS!** Redeemed & Reset.")
+            # MENSAJE LIMPIO: Sin key, sin IP, solo confirmación
+            await temp_message(event, "✅ **SUCCESS!** License activated.")
         else:
-            await temp_message(event, "✅ **SUCCESS!** Redeemed (Reset Failed).")
+            await temp_message(event, "⚠️ License activated, but IP reset failed.")
     else:
         await wait_msg.delete()
-        await temp_message(event, "❌ **DB Error.**")
+        await temp_message(event, "❌ **System Error.** Try again.")
 
 # --- CHANGE IP ---
 async def handler_changeip(event):
     args = event.pattern_match.group(1)
-    await event.delete()
+    await event.delete() # Borrado instantáneo
 
     if not args:
         await temp_message(event, "❌ Usage: `.changeip [NEW_IP]`")
@@ -77,25 +87,22 @@ async def handler_changeip(event):
 
     parts = args.split()
     
-    # 🛑 SEGURIDAD CRÍTICA: MODO ADMIN (2 Argumentos)
-    # Si hay 2 partes (Key Parcial + IP), verificamos ESTRICTAMENTE que seas TÚ.
+    # 🛑 MODO ADMIN (2 Argumentos)
     if len(parts) >= 2:
-        # event.out es True SOLO si el mensaje salió de TU cuenta (Userbot)
         if not event.out:
-            await temp_message(event, "⛔ **Access Denied:** Admin only.")
+            await temp_message(event, "⛔ **Access Denied.**")
             return
 
-        # --- LÓGICA DE ADMIN ---
         search_input = parts[0].strip()
         new_ip = parts[1].strip()
         
         full_key = await db.search_license_by_partial(search_input)
         
         if full_key is None:
-            await temp_message(event, f"❌ Admin: No key matches '{search_input}'")
+            await temp_message(event, "❌ Admin: Key not found in DB.")
             return
         elif full_key == "AMBIGUOUS":
-            await temp_message(event, f"⚠️ Admin: Multiple matches for '{search_input}'")
+            await temp_message(event, "⚠️ Admin: Multiple matches found.")
             return
             
         user_data, status = ob_api_request('GET', f"users/{full_key}")
@@ -109,31 +116,34 @@ async def handler_changeip(event):
         _, up_status = ob_api_request('PUT', f"users/{full_key}", update_data)
         
         if up_status in [200, 204]:
-            await temp_message(event, f"✅ **ADMIN:** Updated `{search_input}` to `{new_ip}`")
+            # MENSAJE LIMPIO ADMIN: Solo confirmamos que se hizo
+            await temp_message(event, f"✅ **ADMIN:** IP Updated for user.")
         else:
             await temp_message(event, "❌ **ADMIN:** Update Failed.")
         return
 
-    # 👤 MODO USUARIO: .changeip [IP] (1 Argumento)
+    # 👤 MODO USUARIO (1 Argumento)
     new_ip = parts[0].strip()
     user_id = event.sender_id
 
     api_key = await db.get_license(user_id)
     if not api_key:
-        await temp_message(event, "❌ No license found.")
+        await temp_message(event, "❌ License not found.")
         return
 
     can_change = await db.can_change_ip(user_id)
     if can_change is not True:
-        await temp_message(event, f"⏳ **Cooldown:** Wait {can_change}")
+        await temp_message(event, f"⏳ **Cooldown Active.** Wait: {can_change}")
         return
 
-    wait_msg = await event.respond("🔄 Updating...")
+    wait_msg = await event.respond("🔄 Processing...")
+    
+    # Obtenemos datos para no borrar grupos
     user_data, status = ob_api_request('GET', f"users/{api_key}")
     
     if status != 200:
         await wait_msg.delete()
-        await temp_message(event, "❌ Server Error.")
+        await temp_message(event, "❌ Server connection error.")
         return
 
     groups = user_data.get('groups', [])
@@ -144,6 +154,7 @@ async def handler_changeip(event):
 
     if up_status in [200, 204]:
         await db.update_ip_cooldown(user_id)
-        await temp_message(event, "✅ **SUCCESS!** IP Updated.")
+        # MENSAJE LIMPIO USUARIO
+        await temp_message(event, "✅ **SUCCESS!** Your IP has been updated.")
     else:
-        await temp_message(event, "❌ Failed.")
+        await temp_message(event, "❌ Update failed.")
