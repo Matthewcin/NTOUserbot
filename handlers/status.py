@@ -8,7 +8,7 @@ async def handler_status(event):
     if not await can_run_command(event): return
     args = event.pattern_match.group(1)
 
-    # 1. ADMIN EDIT
+    # 1. ADMIN EDIT URL
     if args and args.startswith('edit') and event.out:
         parts = args.split()
         if len(parts) < 3: return await event.edit("Usage: .status edit svb [url]")
@@ -19,7 +19,7 @@ async def handler_status(event):
         await event.edit(f"✅ {target.upper()} URL Updated:\n`{new_url}`")
         return
 
-    # 2. DEBUG CHECK
+    # 2. DEBUG CHECK (Petición HTTP real)
     if args and args.startswith('check'):
         parts = args.split()
         if len(parts) < 2: return await event.reply("Usage: <code>.status check svb</code>", parse_mode='html')
@@ -46,10 +46,14 @@ async def handler_status(event):
         )
         return
 
-    # 3. PUBLIC STATUS
+    # 3. PUBLIC DASHBOARD (Aquí integramos el WARN)
     if not db.pool: return await event.reply("DB Disconnected")
+    
     url_svb = await db.get_setting('url_svb')
     url_ob2 = await db.get_setting('url_ob2')
+    
+    # 👇 RECUPERAR WARN DE LA DB
+    global_warn = await db.get_setting('global_warn')
     
     msg = await event.reply("Checking Status...")
     
@@ -63,10 +67,22 @@ async def handler_status(event):
             return f"❌ <b>OFFLINE</b> (Code: {r.status_code})"
         except: return "❌ <b>DOWN</b>"
 
+    # Preparar el bloque de alerta si existe
+    warn_block = ""
+    if global_warn and len(global_warn) > 0:
+        warn_block = f"\n⚠️ <b>NOTE!</b> -> {global_warn}\n"
+
+    status_svb = check(url_svb)
+    status_ob2 = check(url_ob2)
+
     await msg.edit(
-        "📊 <b>SYSTEM STATUS</b>\n━━━━━━━━━━━━━━━━\n"
-        f"🤖 <b>Bot System:</b> ✅ Online\n🛡️ <b>Database:</b> ✅ Connected\n"
+        "📊 <b>SYSTEM STATUS</b>\n"
         "━━━━━━━━━━━━━━━━\n"
-        f"☁️ <b>SVB Cloud:</b> {check(url_svb)}\n☁️ <b>OB2 Cloud:</b> {check(url_ob2)}\n",
+        f"🤖 <b>Bot System:</b> ✅ Online\n"
+        f"🛡️ <b>Database:</b> ✅ Connected\n"
+        "━━━━━━━━━━━━━━━━\n"
+        f"☁️ <b>SVB Cloud:</b> {status_svb}\n"
+        f"☁️ <b>OB2 Cloud:</b> {status_ob2}\n"
+        f"{warn_block}", # <--- Aquí se inyecta la alerta
         parse_mode='html'
     )
