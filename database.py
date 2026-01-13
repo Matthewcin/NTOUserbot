@@ -19,7 +19,7 @@ class Database:
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
-            # Tablas (Products, Orders, Settings, Licenses)...
+            # Tablas Base
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id SERIAL PRIMARY KEY,
@@ -47,6 +47,7 @@ class Database:
                     value TEXT
                 );
             """)
+            # Tabla Licencias
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS licenses (
                     user_id BIGINT PRIMARY KEY,
@@ -55,11 +56,19 @@ class Database:
                     last_ip_change TIMESTAMP
                 );
             """)
-            # Migración por si acaso
             try: await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
             except: pass
+            
+            # 🆕 TABLA WALLETS (Crypto)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS wallets (
+                    symbol TEXT PRIMARY KEY,
+                    address TEXT NOT NULL,
+                    network TEXT NOT NULL
+                );
+            """)
 
-    # --- MÉTODOS ESTÁNDAR (Get, Create, etc) ---
+    # --- MÉTODOS PRODUCTOS ---
     async def get_product(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -99,6 +108,7 @@ class Database:
             res = await conn.execute("DELETE FROM products WHERE key_name = $1", key)
             return res != "DELETE 0"
 
+    # --- MÉTODOS SETTINGS ---
     async def get_setting(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -114,7 +124,7 @@ class Database:
             """, key, value)
             return True
 
-    # --- MÉTODOS DE LICENCIAS ---
+    # --- MÉTODOS LICENCIAS ---
     async def get_license(self, user_id):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -160,20 +170,43 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE licenses SET last_ip_change = NOW() WHERE user_id = $1", user_id)
 
-    # 🆕 NUEVO: BUSCADOR INTELIGENTE DE KEY
     async def search_license_by_partial(self, partial_text):
-        """Busca una licencia que contenga el texto dado (case insensitive)"""
         if not self.pool: return None
         async with self.pool.acquire() as conn:
-            # ILIKE es case-insensitive en Postgres. %texto% busca en cualquier parte.
             pattern = f"%{partial_text}%"
             rows = await conn.fetch("SELECT api_key FROM licenses WHERE api_key ILIKE $1", pattern)
-            
-            if len(rows) == 0:
-                return None # No se encontró nada
-            elif len(rows) == 1:
-                return rows[0]['api_key'] # Se encontró EXACTAMENTE una
-            else:
-                return "AMBIGUOUS" # Se encontraron muchas (ej: "VIRUS" coincide con VIRUS-1 y VIRUS-2)
+            if len(rows) == 0: return None
+            elif len(rows) == 1: return rows[0]['api_key']
+            else: return "AMBIGUOUS"
+
+    # 🆕 MÉTODOS WALLETS (CRYPTO)
+    async def set_wallet(self, symbol, address, network):
+        """Agrega o edita una wallet (Upsert)"""
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO wallets (symbol, address, network) VALUES ($1, $2, $3)
+                ON CONFLICT (symbol) DO UPDATE SET address = $2, network = $3
+            """, symbol.upper(), address, network)
+            return True
+
+    async def get_wallet(self, symbol):
+        """Obtiene una wallet por símbolo"""
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow("SELECT * FROM wallets WHERE symbol = $1", symbol.upper())
+
+    async def get_all_wallets(self):
+        """Lista todas las wallets"""
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            return await conn.fetch("SELECT * FROM wallets ORDER BY symbol ASC")
+
+    async def delete_wallet(self, symbol):
+        """Elimina una wallet"""
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            res = await conn.execute("DELETE FROM wallets WHERE symbol = $1", symbol.upper())
+            return res != "DELETE 0"
 
 db = Database()
