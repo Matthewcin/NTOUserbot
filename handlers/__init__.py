@@ -1,10 +1,10 @@
 from telethon import events
 
+# Importamos handler_guide de general
 from .welcome import handler_welcome, handler_hello
-from .general import handler_help, handler_cmds, handler_request, handler_urldebug
+from .general import handler_help, handler_cmds, handler_request, handler_urldebug, handler_guide 
 from .status import handler_status
 from .shop import handler_list, handler_info, handler_buy
-# Importamos TODOS los handlers de admin
 from .admin import (
     handler_secret_menu, 
     handler_add, handler_del, handler_edit, handler_warn,
@@ -18,11 +18,12 @@ def register_all_handlers(client):
     client.add_event_handler(handler_welcome, events.ChatAction)
     client.add_event_handler(handler_hello, events.NewMessage(pattern=r'(?i)\.hello'))
     
-    # General
+    # General (Incluye .guide)
     client.add_event_handler(handler_help, events.NewMessage(pattern=r'(?i)\.help'))
     client.add_event_handler(handler_cmds, events.NewMessage(pattern=r'(?i)\.cmds'))
     client.add_event_handler(handler_request, events.NewMessage(pattern=r'(?i)\.request(?:\s+(.*))?'))
     client.add_event_handler(handler_urldebug, events.NewMessage(pattern=r'(?i)\.urldebug(?:\s+(.*))?'))
+    client.add_event_handler(handler_guide, events.NewMessage(pattern=r'(?i)\.guide')) # <--- NUEVO
     
     # Status
     client.add_event_handler(handler_status, events.NewMessage(pattern=r'(?i)\.status(?:\s+(.*))?'))
@@ -36,20 +37,20 @@ def register_all_handlers(client):
     client.add_event_handler(handler_redeem, events.NewMessage(pattern=r'(?i)\.redeem(?:\s+(.*))?'))
     client.add_event_handler(handler_changeip, events.NewMessage(pattern=r'(?i)\.changeip(?:\s+(.*))?'))
     
-    # Admin (Solo event.out)
+    # Admin
     client.add_event_handler(handler_secret_menu, events.NewMessage(outgoing=True, pattern=r'\.2284230134'))
     client.add_event_handler(handler_add, events.NewMessage(outgoing=True, pattern=r'(?i)\.add\s+(.*)'))
     client.add_event_handler(handler_del, events.NewMessage(outgoing=True, pattern=r'(?i)\.del\s+(.*)'))
     client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'(?i)\.edit\s+(.*)'))
     client.add_event_handler(handler_warn, events.NewMessage(outgoing=True, pattern=r'(?i)\.warn(?:\s+(.*))?'))
     
-    # OPENBULLET ADMIN
+    # OB Admin
     client.add_event_handler(handler_generate, events.NewMessage(outgoing=True, pattern=r'(?i)\.generate\s+(.*)'))
     client.add_event_handler(handler_addgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.addgroup\s+(.*)'))
     client.add_event_handler(handler_delgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.delgroup\s+(.*)'))
     client.add_event_handler(handler_apicheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.apicheck\s+(.*)'))
     
-    # CRYPTO WALLETS ADMIN
+    # Crypto Admin
     client.add_event_handler(handler_pay, events.NewMessage(outgoing=True, pattern=r'(?i)\.pay\s+(.*)'))
     client.add_event_handler(handler_payadd, events.NewMessage(outgoing=True, pattern=r'(?i)\.payadd\s+(.*)'))
     client.add_event_handler(handler_payedit, events.NewMessage(outgoing=True, pattern=r'(?i)\.payedit\s+(.*)'))
