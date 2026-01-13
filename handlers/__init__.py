@@ -8,7 +8,8 @@ from .shop import handler_list, handler_info, handler_buy
 from .admin import (
     handler_secret_menu, 
     handler_add, handler_del, handler_edit, handler_warn,
-    handler_generate, handler_addgroup, handler_delgroup, handler_apicheck
+    handler_generate, handler_addgroup, handler_delgroup, handler_apicheck,
+    handler_pay, handler_payadd, handler_payedit, handler_paylist, handler_paycheck
 )
 from .openbullet import handler_redeem, handler_changeip
 
@@ -42,8 +43,15 @@ def register_all_handlers(client):
     client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'(?i)\.edit\s+(.*)'))
     client.add_event_handler(handler_warn, events.NewMessage(outgoing=True, pattern=r'(?i)\.warn(?:\s+(.*))?'))
     
-    # NUEVOS COMANDOS ADMIN
+    # OPENBULLET ADMIN
     client.add_event_handler(handler_generate, events.NewMessage(outgoing=True, pattern=r'(?i)\.generate\s+(.*)'))
     client.add_event_handler(handler_addgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.addgroup\s+(.*)'))
     client.add_event_handler(handler_delgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.delgroup\s+(.*)'))
     client.add_event_handler(handler_apicheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.apicheck\s+(.*)'))
+    
+    # CRYPTO WALLETS ADMIN
+    client.add_event_handler(handler_pay, events.NewMessage(outgoing=True, pattern=r'(?i)\.pay\s+(.*)'))
+    client.add_event_handler(handler_payadd, events.NewMessage(outgoing=True, pattern=r'(?i)\.payadd\s+(.*)'))
+    client.add_event_handler(handler_payedit, events.NewMessage(outgoing=True, pattern=r'(?i)\.payedit\s+(.*)'))
+    client.add_event_handler(handler_paylist, events.NewMessage(outgoing=True, pattern=r'(?i)\.paylist'))
+    client.add_event_handler(handler_paycheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.paycheck\s+(.*)'))
