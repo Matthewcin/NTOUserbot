@@ -4,7 +4,7 @@ from .welcome import handler_welcome, handler_hello
 from .general import handler_help, handler_cmds, handler_request, handler_urldebug
 from .status import handler_status
 from .shop import handler_list, handler_info, handler_buy
-# Importamos los nuevos handlers de admin
+# Importamos TODOS los handlers de admin
 from .admin import (
     handler_secret_menu, 
     handler_add, handler_del, handler_edit, handler_warn,
@@ -42,7 +42,7 @@ def register_all_handlers(client):
     client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'(?i)\.edit\s+(.*)'))
     client.add_event_handler(handler_warn, events.NewMessage(outgoing=True, pattern=r'(?i)\.warn(?:\s+(.*))?'))
     
-    # 👇 NUEVOS COMANDOS ADMIN
+    # NUEVOS COMANDOS ADMIN
     client.add_event_handler(handler_generate, events.NewMessage(outgoing=True, pattern=r'(?i)\.generate\s+(.*)'))
     client.add_event_handler(handler_addgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.addgroup\s+(.*)'))
     client.add_event_handler(handler_delgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.delgroup\s+(.*)'))
