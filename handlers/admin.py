@@ -40,3 +40,28 @@ async def handler_edit(event):
         await event.delete()
         await event.client.send_message("me", "Updated" if success else "Failed")
     except: await event.delete()
+
+# 🆕 HANDLER WARN
+async def handler_warn(event):
+    # Solo tú puedes poner advertencias
+    if not event.out: return
+
+    args = event.pattern_match.group(1)
+    
+    if not args:
+        await event.delete()
+        await event.client.send_message("me", "❌ Usage: `.warn [Message]` or `.warn delete`")
+        return
+
+    msg = args.strip()
+
+    if msg.lower() == "delete":
+        # Borrar advertencia (la dejamos vacía)
+        await db.set_setting('global_warn', '')
+        await event.delete()
+        await event.client.send_message("me", "✅ Warning removed.")
+    else:
+        # Establecer advertencia
+        await db.set_setting('global_warn', msg)
+        await event.delete()
+        await event.client.send_message("me", f"✅ Warning set:\n`{msg}`")
