@@ -91,14 +91,12 @@ async def handler_pay(event):
         return await event.client.send_message("me", "❌ Usage: `.pay [SYMBOL] [AMOUNT]`")
 
     parts = args.split()
-    # Asumimos .pay BTC 50
     if len(parts) < 2:
          return await event.client.send_message("me", "❌ Format: `.pay [SYMBOL] [AMOUNT]`")
 
     symbol = parts[0].upper()
     amount = parts[1]
     
-    # Buscar en DB
     wallet = await db.get_wallet(symbol)
     if not wallet:
          return await event.client.send_message("me", f"❌ Wallet <b>{symbol}</b> not found. Use .payadd first.", parse_mode='html')
@@ -120,7 +118,7 @@ async def handler_payadd(event):
 
     symbol = parts[0].upper()
     address = parts[1]
-    network = " ".join(parts[2:]) # El resto es la network (ej: Bitcoin Segwit)
+    network = " ".join(parts[2:])
 
     if await db.set_wallet(symbol, address, network):
         await event.client.send_message("me", f"✅ Wallet <b>{symbol}</b> added/updated!", parse_mode='html')
@@ -129,10 +127,9 @@ async def handler_payadd(event):
 
 # 3. PAYEDIT (Editar Wallet - Alias de Payadd)
 async def handler_payedit(event):
-    # Funciona igual que payadd porque usamos 'Upsert' en DB
     await handler_payadd(event)
 
-# 4. PAYCHECK (Preview - Probar address sin guardar)
+# 4. PAYCHECK (Preview)
 async def handler_paycheck(event):
     if not event.out: return
     args = event.pattern_match.group(1)
@@ -143,7 +140,6 @@ async def handler_paycheck(event):
 
     parts = args.split()
     if len(parts) < 2:
-        # Si solo pone .paycheck BTC, mostramos la info de la DB
         symbol = parts[0].upper()
         w = await db.get_wallet(symbol)
         if w:
@@ -155,7 +151,6 @@ async def handler_paycheck(event):
             await event.client.send_message("me", f"❌ {symbol} not found.")
         return
 
-    # Si pone Address y Network, generamos PREVIEW
     symbol = parts[0].upper()
     address = parts[1]
     network = " ".join(parts[2:]) if len(parts) > 2 else "Default"
@@ -181,7 +176,7 @@ async def handler_paylist(event):
     await event.client.send_message("me", msg, parse_mode='html')
 
 
-# --- OB / ADMIN HANDLERS (MANTENIDOS) ---
+# --- OB / ADMIN HANDLERS ---
 
 async def handler_generate(event):
     if not event.out: return
@@ -235,13 +230,15 @@ async def handler_delgroup(event):
     if up_status in [200, 204]: await event.client.send_message("me", f"🗑️ Removed <b>{group_name}</b>", parse_mode='html')
     else: await event.client.send_message("me", f"❌ API Error: {up_status}")
 
+# 👇 ACTUALIZADO: Envía al chat actual (event.respond) en lugar de 'me'
 async def handler_apicheck(event):
     if not event.out: return
     api_key = event.pattern_match.group(1)
     await event.delete()
-    if not api_key: return await event.client.send_message("me", "❌ Usage: `.apicheck [KEY]`")
+    if not api_key: return await event.respond("❌ Usage: `.apicheck [KEY]`")
+    
     user_data, status = _api_request('GET', f"users/{api_key}")
-    if status != 200: return await event.client.send_message("me", "❌ Not found.")
+    if status != 200: return await event.respond("❌ Key not found on Server.")
     
     db_user_id = None
     cooldown_info = "Unknown"
@@ -252,12 +249,17 @@ async def handler_apicheck(event):
             can_change = await db.can_change_ip(db_user_id)
             cooldown_info = "✅ Ready" if can_change is True else f"⏳ {can_change}"
 
-    msg = (f"🕵️‍♂️ <b>INFO</b>\n🔑 <code>{mask_text(api_key, 8, 8)}</code>\n"
+    msg = (f"🕵️‍♂️ <b>INFO (CENSORED)</b>\n"
+           f"🔑 <code>{mask_text(api_key, 8, 8)}</code>\n"
            f"🌍 IPs: {', '.join([mask_text(i,3,2) for i in user_data.get('iPs', [])])}\n"
            f"👥 Grps: {', '.join(user_data.get('groups', []))}\n"
-           f"⏲️ Cool: {cooldown_info}\n👤 TG: {db_user_id if db_user_id else 'N/A'}")
-    await event.client.send_message("me", msg, parse_mode='html')
+           f"⏲️ Cool: {cooldown_info}\n"
+           f"👤 TG: {db_user_id if db_user_id else 'N/A'}")
+    
+    # Se envía al chat donde se usó el comando
+    await event.respond(msg, parse_mode='html')
 
+# --- SHOP & WARN ---
 async def handler_add(event):
     if not event.out: return
     try:
