@@ -4,8 +4,8 @@ from .welcome import handler_welcome, handler_hello
 from .general import handler_help, handler_cmds, handler_request, handler_urldebug
 from .status import handler_status
 from .shop import handler_list, handler_info, handler_buy
-# Importamos el nuevo handler_warn desde admin
-from .admin import handler_secret_menu, handler_add, handler_del, handler_edit, handler_setalias, handler_warn 
+# 👇 CORREGIDO: Quitamos handler_setalias de aquí
+from .admin import handler_secret_menu, handler_add, handler_del, handler_edit, handler_warn 
 from .openbullet import handler_redeem, handler_changeip
 
 def register_all_handlers(client):
@@ -36,7 +36,6 @@ def register_all_handlers(client):
     client.add_event_handler(handler_add, events.NewMessage(outgoing=True, pattern=r'(?i)\.add\s+(.*)'))
     client.add_event_handler(handler_del, events.NewMessage(outgoing=True, pattern=r'(?i)\.del\s+(.*)'))
     client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'(?i)\.edit\s+(.*)'))
-    client.add_event_handler(handler_setalias, events.NewMessage(outgoing=True, pattern=r'(?i)\.setalias\s+(.*)'))
     
-    # 👇 NUEVO: WARN
+    # 👇 CORREGIDO: Solo registramos el WARN, nada de alias
     client.add_event_handler(handler_warn, events.NewMessage(outgoing=True, pattern=r'(?i)\.warn(?:\s+(.*))?'))
