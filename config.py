@@ -5,7 +5,7 @@ API_ID = int(os.getenv('API_ID', '32541501'))
 API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f')
 SESSION_STRING = os.getenv('SESSION_STRING')
 DB_URL = os.getenv('DB_URL')
-OXAPAY_KEY = os.getenv('OXAPAY_KEY', 'WGJMFR-0DMVXO-IRCXPB-GDJHED')
+OXAPAY_KEY = os.getenv('OXAPAY_KEY')
 
 # ☁️ OpenBullet API (SmarterASP)
 OB_URL = "http://cloudfig6-001-site1.qtempurl.com/top"
