@@ -1,70 +1,133 @@
+import requests
 import uuid
+import sys
+import traceback
 from telethon import events
 from database import db
-from payments import create_invoice
-from handlers.utils import can_run_command
+import config
 
-async def handler_list(event):
-    if not await can_run_command(event): return
-    if not db.pool: return await event.reply("DB Error")
-    products = await db.get_all_products()
-    msg = "📂 <b>CATALOG</b>\n\n"
-    if products:
-        for p in products:
-            msg += f"🔹 <b>{p['display_name']}</b>\n   💰 ${p['price_usd']} USD | Key: <code>{p['key_name']}</code>\n\n"
-    else: msg += "Catalog empty.\n"
-    msg += "Type <code>.buy [key]</code> to purchase."
-    await event.reply(msg, parse_mode='html')
+# Función auxiliar para imprimir logs visibles en Render
+def log(msg):
+    print(f"🛒 [SHOP DEBUG] {msg}", flush=True)
 
-async def handler_info(event):
-    if not await can_run_command(event): return
-    arg = event.pattern_match.group(1)
-    if not arg: return await event.reply("Usage: <code>.info ebook</code>", parse_mode='html')
-    p = await db.get_product(arg.lower())
-    if p:
-        await event.reply(
-            f"📘 <b>INFO: {p['display_name']}</b>\n━━━━━━━━━━━━━━━━\n📝 {p['description']}\n\n"
-            f"💵 Price: <b>${p['price_usd']} USD</b>\n👉 To Buy: <code>.buy {p['key_name']}</code>",
-            parse_mode='html'
-        )
-    else: await event.reply("Not found.")
+async def create_oxapay_link(amount, order_id, email="no-mail@test.com"):
+    """Genera el link de pago usando la API de Merchant de OxaPay"""
+    url = "https://api.oxapay.com/merchants/request"
+    
+    log(f"Iniciando petición a OxaPay para Orden: {order_id} - Monto: {amount}")
+    
+    data = {
+        "merchant": config.OXAPAY_KEY,
+        "amount": amount,
+        "currency": "USD",
+        "lifeTime": 30,
+        "feePaidByPayer": 0,
+        "underPaidCover": 2.5,
+        "callbackUrl": config.WEBHOOK_URL,
+        "returnUrl": "https://t.me/Virusnto",
+        "description": f"Order {order_id}",
+        "orderId": order_id,
+        "email": email
+    }
+    
+    try:
+        # Imprimimos qué estamos enviando (Ocultando parte de la key por seguridad)
+        masked_key = config.OXAPAY_KEY[:4] + "****" if config.OXAPAY_KEY else "NONE"
+        log(f"Enviando datos a OxaPay API... Key usada: {masked_key}")
+        log(f"Webhook URL configurada: {config.WEBHOOK_URL}")
+
+        response = requests.post(url, json=data, timeout=10)
+        
+        log(f"Status Code recibido: {response.status_code}")
+        
+        try:
+            res_json = response.json()
+            log(f"Respuesta RAW de OxaPay: {res_json}")
+        except:
+            log(f"No se pudo leer JSON. Texto plano: {response.text}")
+            return None
+        
+        if res_json.get("result") == 100:
+            log("✅ Link generado exitosamente.")
+            return {
+                "url": res_json.get("payLink"),
+                "trackId": res_json.get("trackId")
+            }
+        else:
+            log(f"❌ OxaPay devolvió error (Result != 100). Mensaje: {res_json.get('message')}")
+            return None
+
+    except Exception as e:
+        log(f"⚠️ EXCEPCIÓN CRÍTICA al contactar OxaPay: {e}")
+        return None
+
+# --- HANDLER DEL COMANDO ---
 
 async def handler_buy(event):
-    if not await can_run_command(event): return
-    if not db.pool: return await event.reply("DB Disconnected")
-    key = event.pattern_match.group(1)
+    # Solo ejecutamos si el mensaje sale de ti (Userbot)
+    if not event.out: 
+        return
     
-    # Menu
-    if not key:
-        products = await db.get_all_products()
-        msg = "🛒 <b>PURCHASE MENU</b>\n\n"
-        if products:
-            for p in products:
-                msg += f"🔸 <b>{p['display_name']}</b> (${p['price_usd']})\n   👉 <code>.buy {p['key_name']}</code>\n\n"
-        else: msg += "No products."
-        return await event.reply(msg, parse_mode='html')
-
-    # Invoice
     try:
-        p = await db.get_product(key.strip().lower())
-        if not p: return await event.reply("Product not found.")
+        log("--- COMANDO .BUY DETECTADO ---")
         
+        # Obtener argumentos
+        text = event.message.text # ej: .buy ebook
+        args = text.split()
+        
+        if len(args) < 2:
+            log("Faltan argumentos.")
+            await event.edit("❌ Usage: `.buy [KeyName]`")
+            return
+        
+        product_key = args[1].strip().lower()
+        log(f"Buscando producto: '{product_key}' en DB...")
+        
+        # Buscar producto en DB
+        product = await db.get_product(product_key)
+        
+        if not product:
+            log(f"❌ Producto '{product_key}' NO encontrado en la base de datos.")
+            await event.edit(f"❌ Product `{product_key}` not found in DB.")
+            return
+        
+        log(f"✅ Producto encontrado: {product['display_name']} - Precio: {product['price_usd']}")
+
+        # Generar datos
         order_id = str(uuid.uuid4())[:8]
-        amount = float(p['price_usd'])
-        msg_wait = await event.reply(f"Creating invoice for ${amount}...")
+        amount = float(product['price_usd'])
         
-        invoice = create_invoice(amount, order_id, f"Buy: {p['display_name']}")
+        await event.edit("🔄 Connecting to OxaPay...")
         
-        if invoice and invoice.get('url'):
-            await db.create_order(order_id, invoice['track_id'], event.sender_id, key, amount)
-            link_html = f"<a href='{invoice['url']}'>🔗 PAY NOW - CLICK HERE</a>"
-            await msg_wait.edit(
-                f"💳 <b>INVOICE GENERATED</b>\n📦 Item: {p['display_name']}\n💵 Total: <b>${amount} USD</b>\n\n"
-                f"{link_html}\n\n⏳ Valid for 60m.\nℹ️ Send proof after payment.",
-                parse_mode='html', link_preview=False
+        # Crear Pago
+        payment_data = await create_oxapay_link(amount, order_id)
+        
+        if payment_data:
+            log("Guardando orden en DB...")
+            # Guardar en DB
+            await db.create_order(
+                order_id, 
+                payment_data['trackId'], 
+                event.chat_id, 
+                product_key, 
+                amount
             )
-        else: await msg_wait.edit("❌ Payment Gateway Error (Check Logs)")
+            
+            # Responder con el link
+            msg = (
+                f"🛒 <b>INVOICE CREATED</b>\n"
+                f"📦 Product: {product['display_name']}\n"
+                f"💵 Amount: ${amount} USD\n"
+                f"🔗 Link: <a href='{payment_data['url']}'>Click to Pay (Crypto)</a>\n\n"
+                f"<i>Link expires in 30 minutes.</i>"
+            )
+            await event.edit(msg, parse_mode='html')
+            log("✅ Mensaje editado con el link. Proceso finalizado.")
+        else:
+            log("❌ Falló la generación del link (payment_data es None).")
+            await event.edit("❌ Error generating invoice. Check Render Logs.")
+
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        await event.reply(f"Error: {e}")
+        log(f"🔥 CRASH EN HANDLER_BUY: {e}")
+        traceback.print_exc() # Imprime el error completo en logs
+        await event.edit(f"❌ System Error: {str(e)}")
