@@ -1,110 +1,80 @@
 import requests
 import uuid
-import sys
 import traceback
 from telethon import events
 from database import db
 import config
 
-# Función auxiliar para imprimir logs visibles en Render
-def log(msg):
-    print(f"🛒 [SHOP DEBUG] {msg}", flush=True)
-
-async def create_oxapay_link(amount, order_id, email="no-mail@test.com"):
-    """Genera el link de pago usando la API de Merchant de OxaPay"""
+# --- FUNCIÓN PARA GENERAR LINK DE OXAPAY ---
+async def create_oxapay_link(amount, order_id):
     url = "https://api.oxapay.com/merchants/request"
-    
-    log(f"Iniciando petición a OxaPay para Orden: {order_id} - Monto: {amount}")
     
     data = {
         "merchant": config.OXAPAY_KEY,
         "amount": amount,
         "currency": "USD",
-        "lifeTime": 30,
+        "lifeTime": 30, # El link dura 30 minutos
         "feePaidByPayer": 0,
         "underPaidCover": 2.5,
         "callbackUrl": config.WEBHOOK_URL,
-        "returnUrl": "https://t.me/Virusnto",
+        "returnUrl": "https://t.me/Virusnto", # A donde vuelven tras pagar
         "description": f"Order {order_id}",
-        "orderId": order_id,
-        "email": email
+        "orderId": order_id
     }
     
     try:
-        # Imprimimos qué estamos enviando (Ocultando parte de la key por seguridad)
-        masked_key = config.OXAPAY_KEY[:4] + "****" if config.OXAPAY_KEY else "NONE"
-        log(f"Enviando datos a OxaPay API... Key usada: {masked_key}")
-        log(f"Webhook URL configurada: {config.WEBHOOK_URL}")
-
         response = requests.post(url, json=data, timeout=10)
-        
-        log(f"Status Code recibido: {response.status_code}")
-        
-        try:
-            res_json = response.json()
-            log(f"Respuesta RAW de OxaPay: {res_json}")
-        except:
-            log(f"No se pudo leer JSON. Texto plano: {response.text}")
-            return None
+        res_json = response.json()
         
         if res_json.get("result") == 100:
-            log("✅ Link generado exitosamente.")
             return {
                 "url": res_json.get("payLink"),
                 "trackId": res_json.get("trackId")
             }
         else:
-            log(f"❌ OxaPay devolvió error (Result != 100). Mensaje: {res_json.get('message')}")
+            print(f"❌ Error OxaPay: {res_json}")
             return None
-
     except Exception as e:
-        log(f"⚠️ EXCEPCIÓN CRÍTICA al contactar OxaPay: {e}")
+        print(f"⚠️ Exception OxaPay: {e}")
         return None
 
-# --- HANDLER DEL COMANDO ---
+# --- HANDLER PRINCIPAL (.buy) ---
 
 async def handler_buy(event):
-    # Solo ejecutamos si el mensaje sale de ti (Userbot)
+    # 1. Seguridad: Solo responde si TÚ (el dueño del userbot) escribiste el mensaje.
     if not event.out: 
         return
     
+    # 2. Obtener argumentos del mensaje (ej: .buy ebook)
+    args = event.message.text.split()
+    
+    if len(args) < 2:
+        await event.edit("❌ **Uso correcto:** `.buy [nombre_producto]`")
+        return
+    
+    product_key = args[1].strip().lower()
+    
     try:
-        log("--- COMANDO .BUY DETECTADO ---")
+        # 3. Aviso visual de "Cargando..." en el mismo chat
+        await event.edit(f"🔍 Buscando producto `{product_key}`...")
         
-        # Obtener argumentos
-        text = event.message.text # ej: .buy ebook
-        args = text.split()
-        
-        if len(args) < 2:
-            log("Faltan argumentos.")
-            await event.edit("❌ Usage: `.buy [KeyName]`")
-            return
-        
-        product_key = args[1].strip().lower()
-        log(f"Buscando producto: '{product_key}' en DB...")
-        
-        # Buscar producto en DB
+        # 4. Buscar en Base de Datos
         product = await db.get_product(product_key)
         
         if not product:
-            log(f"❌ Producto '{product_key}' NO encontrado en la base de datos.")
-            await event.edit(f"❌ Product `{product_key}` not found in DB.")
+            await event.edit(f"❌ El producto `{product_key}` no existe en la base de datos.")
             return
         
-        log(f"✅ Producto encontrado: {product['display_name']} - Precio: {product['price_usd']}")
-
-        # Generar datos
-        order_id = str(uuid.uuid4())[:8]
+        # 5. Generar Pago
+        await event.edit("🔄 **Generando factura con OxaPay...**")
+        
         amount = float(product['price_usd'])
+        order_id = str(uuid.uuid4())[:8]
         
-        await event.edit("🔄 Connecting to OxaPay...")
-        
-        # Crear Pago
         payment_data = await create_oxapay_link(amount, order_id)
         
         if payment_data:
-            log("Guardando orden en DB...")
-            # Guardar en DB
+            # Guardar orden en DB para que el Webhook la reconozca luego
             await db.create_order(
                 order_id, 
                 payment_data['trackId'], 
@@ -113,21 +83,26 @@ async def handler_buy(event):
                 amount
             )
             
-            # Responder con el link
-            msg = (
-                f"🛒 <b>INVOICE CREATED</b>\n"
-                f"📦 Product: {product['display_name']}\n"
-                f"💵 Amount: ${amount} USD\n"
-                f"🔗 Link: <a href='{payment_data['url']}'>Click to Pay (Crypto)</a>\n\n"
-                f"<i>Link expires in 30 minutes.</i>"
+            # 6. MOSTRAR RESULTADO FINAL EN EL MISMO CHAT
+            # Usamos HTML para que el link se vea bonito y clicable
+            mensaje_final = (
+                f"🛒 <b>ORDEN CREADA</b>\n\n"
+                f"📦 <b>Producto:</b> {product['display_name']}\n"
+                f"💵 <b>Precio:</b> ${amount} USD\n"
+                f"🆔 <b>ID Orden:</b> <code>{order_id}</code>\n\n"
+                f"👉 <a href='{payment_data['url']}'><b>[ PAGAR CON CRYPTO ]</b></a>\n"
+                f"👉 <a href='{payment_data['url']}'><b>[ CLICK AQUÍ ]</b></a>\n\n"
+                f"<i>⏳ El enlace expira en 30 minutos.</i>"
             )
-            await event.edit(msg, parse_mode='html')
-            log("✅ Mensaje editado con el link. Proceso finalizado.")
+            
+            # link_preview=False evita que Telegram intente cargar una vista previa de la web de pagos
+            await event.edit(mensaje_final, parse_mode='html', link_preview=False)
+            
         else:
-            log("❌ Falló la generación del link (payment_data es None).")
-            await event.edit("❌ Error generating invoice. Check Render Logs.")
+            await event.edit("❌ Error: No se pudo conectar con OxaPay. Revisa la API Key.")
 
     except Exception as e:
-        log(f"🔥 CRASH EN HANDLER_BUY: {e}")
-        traceback.print_exc() # Imprime el error completo en logs
-        await event.edit(f"❌ System Error: {str(e)}")
+        # Si algo explota, que te lo diga en el chat
+        error_msg = f"❌ **Error del Sistema:**\n`{str(e)}`"
+        await event.edit(error_msg)
+        traceback.print_exc()
