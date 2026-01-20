@@ -1,11 +1,16 @@
 import os
 
-# 🔐 Credenciales Telegram y DB
-API_ID = int(os.getenv('API_ID', '32541501'))
-API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f')
-SESSION_STRING = os.getenv('SESSION_STRING')
-DB_URL = os.getenv('DB_URL')
+# 🔐 Credenciales Telegram
+API_ID = int(os.getenv('API_ID', '32541501')) # ID DEL USERBOT
+API_HASH = os.getenv('API_HASH', '66f7a1c72eac5d25705ef1d35275ca4f') # HASH DEL USERBOT
+SESSION_STRING = os.getenv('SESSION_STRING') # SESSION PARA INICIAR BOT EN CUENTA PERSONAL
+
+DB_URL = os.getenv('DB_URL') # URL DE NEONDB POSGRES
+
+# OXAPAY
 OXAPAY_KEY = os.getenv('OXAPAY_KEY')
+base_url = os.getenv('RENDER_EXTERNAL_URL')
+WEBHOOK_URL = base_url + '/webhook/oxapay'
 
 # ☁️ OpenBullet API (SmarterASP)
 OB_URL = "http://cloudfig6-001-site1.qtempurl.com/top"
