@@ -11,7 +11,7 @@ async def handler_request(event):
     args = text.split()
     
     if len(args) != 2:
-        await event.reply("❌ **Uso:** `.request [Config / Account / Combo / Help]` (One Word Only!)\nEx: `.request DisneyPlus`")
+        await event.reply("❌ **Use:** `.request [Config / Account / Combo / Help]` (One Word Only!)\nEx: `.request DisneyPlus`")
         return
 
     service = args[1].strip()
