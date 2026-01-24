@@ -24,7 +24,7 @@ async def handler_request(event):
     success, _ = await db.add_request(user_id, username, service)
 
     if not success:
-        await event.reply("❌ You Have Too Many Requests Pending!" (Max 5). Please Wait.")
+        await event.reply("❌ You Have Too Many Requests Pending! (Max 5). Please Wait.")
         return
 
     # Calcular posición
