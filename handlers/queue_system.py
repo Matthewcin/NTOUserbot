@@ -120,6 +120,30 @@ async def handler_qa(event):
     except:
         await event.respond(f"⚠️ Unexpected Error Sending DM to {req['user_id']} (Private).")
 
+# --- COMANDO .QS (QUEUE STATUS) ---
+async def handler_qs(event):
+    # Comando: .qs - Ver ticket actual
+    if not event.out: return
+
+    req = await db.get_processing_request()
+    
+    if not req:
+        await event.edit("💤 **No Active Ticket.**\nUse `.qa` to grab the next request from queue.")
+        return
+
+    user_link = f"tg://user?id={req['user_id']}"
+    chat_url = f"https://t.me/{req['username']}" if req['username'] != 'NoUser' else user_link
+    
+    # Formato Markdown
+    await event.edit(
+        f"🚧 **CURRENT TICKET INFO**\n\n"
+        f"📦 **Service:** {req['service_name']}\n"
+        f"👤 **User:** [{req['username']}]({user_link}) (ID: {req['user_id']})\n"
+        f"📅 **Created:** {req['created_at']}\n\n"
+        f"🔗 **DM Link:** [[GO TO CHAT]]({chat_url})\n\n"
+        f"💡 *Use `.qend success` or `.qend fail` to finish.*"
+    )
+
 async def handler_qend(event):
     # Comandos: .qend success | .qend fail [razón] | .qend question [msg]
     if not event.out: return
@@ -141,7 +165,7 @@ async def handler_qend(event):
     if action == "success":
         await db.finish_request(req['id'], 'completed')
         
-        # 1. Avisar al usuario actual
+        # 1. Avisar al usuario actual (ticket terminado)
         try:
             await event.client.send_message(req['user_id'], 
                 f"✅ **Request Completed!**\n\nYour request for **{req['service_name']}** is done.!"
@@ -151,7 +175,7 @@ async def handler_qend(event):
         # 2. Mensaje final para ti
         await event.edit(f"✅ **Done.** Request #{req['id']} marked as success.")
         
-        # 3. Revisar quién es el siguiente en la fila y notificar
+        # 3. AUTO-PING: Revisar quién es el siguiente y avisarle
         next_req_list = await db.get_queue_list()
         
         if next_req_list:
@@ -163,12 +187,13 @@ async def handler_qend(event):
                 f"Use `.qa` to start processing it."
             )
             
-            # Avisar al usuario que ahora es el #1
+            # ---> AQUI ESTÁ EL AUTO-PING <---
             try:
                 await event.client.send_message(top['user_id'],
                     "🚀 **You are next!**\nYour request is now #1 in the queue. Get ready!"
                 )
             except: pass
+            # -------------------------------
 
         else:
             await event.client.send_message('me', "🎉 Queue is empty! Good job.")
