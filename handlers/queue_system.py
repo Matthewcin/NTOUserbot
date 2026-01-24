@@ -76,9 +76,11 @@ async def handler_qlist(event):
     for i, row in enumerate(rows):
         u_link = f"tg://user?id={row['user_id']}"
         display_name = row['username'] if row['username'] != 'NoUser' else f"ID:{row['user_id']}"
-        msg += f"**#{i+1}** - {row['service_name']} | <a href='{u_link}'>{display_name}</a>\n"
+        # Usamos formato Markdown para el link: [Texto](URL)
+        msg += f"**#{i+1}** - {row['service_name']} | [{display_name}]({u_link})\n"
     
-    await event.edit(msg, parse_mode='html')
+    # Quitamos parse_mode='html' para que funcionen los **
+    await event.edit(msg)
 
 async def handler_qa(event):
     # Comando: .qa - Aceptar (Accept) el siguiente request
@@ -99,15 +101,14 @@ async def handler_qa(event):
 
     # 3. Notificar al Admin (Tú)
     user_link = f"tg://user?id={req['user_id']}"
-    # Si tiene username, el link lleva al chat, si no, usa el ID
     chat_url = f"https://t.me/{req['username']}" if req['username'] != 'NoUser' else user_link
     
+    # Usamos formato Markdown para los links y quitamos parse_mode html
     await event.edit(
         f"👨‍💻 **ACCEPTING REQUEST**\n\n"
         f"📦 **Service:** {req['service_name']}\n"
-        f"👤 **User:** <a href='{user_link}'>{req['username']}</a> (ID: {req['user_id']})\n"
-        f"🔗 **DM Link:** <a href='{chat_url}'>[CLICK TO CHAT]</a>",
-        parse_mode='html'
+        f"👤 **User:** [{req['username']}]({user_link}) (ID: {req['user_id']})\n"
+        f"🔗 **DM Link:** [[CLICK TO CHAT]]({chat_url})"
     )
 
     # 4. Notificar al Usuario por DM
@@ -117,7 +118,6 @@ async def handler_qa(event):
             "Please stay online. I will contact you shortly if I have questions."
         )
     except:
-        # Si el usuario tiene privado bloqueado
         await event.respond(f"⚠️ Unexpected Error Sending DM to {req['user_id']} (Private).")
 
 async def handler_qend(event):
@@ -157,13 +157,13 @@ async def handler_qend(event):
         if next_req_list:
             top = next_req_list[0] # El siguiente en la fila
             
-            # Avisar al Admin (Mensaje guardado o en el chat actual)
+            # Avisar al Admin
             await event.client.send_message('me', 
                 f"🔔 **NEXT UP:** {top['service_name']} requested by {top['username']}\n"
                 f"Use `.qa` to start processing it."
             )
             
-            # Avisar al usuario que ahora es el #1 (Feature Extra)
+            # Avisar al usuario que ahora es el #1
             try:
                 await event.client.send_message(top['user_id'],
                     "🚀 **You are next!**\nYour request is now #1 in the queue. Get ready!"
