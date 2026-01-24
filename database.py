@@ -59,12 +59,24 @@ class Database:
             try: await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
             except: pass
             
-            # 🆕 TABLA WALLETS (Crypto)
+            # Tabla Wallets (Crypto)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS wallets (
                     symbol TEXT PRIMARY KEY,
                     address TEXT NOT NULL,
                     network TEXT NOT NULL
+                );
+            """)
+
+            # 🆕 TABLA REQUESTS (COLA DE PEDIDOS)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS requests (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    username TEXT,
+                    service_name TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
 
@@ -179,9 +191,8 @@ class Database:
             elif len(rows) == 1: return rows[0]['api_key']
             else: return "AMBIGUOUS"
 
-    # 🆕 MÉTODOS WALLETS (CRYPTO)
+    # --- MÉTODOS WALLETS (CRYPTO) ---
     async def set_wallet(self, symbol, address, network):
-        """Agrega o edita una wallet (Upsert)"""
         if not self.pool: return False
         async with self.pool.acquire() as conn:
             await conn.execute("""
@@ -191,22 +202,77 @@ class Database:
             return True
 
     async def get_wallet(self, symbol):
-        """Obtiene una wallet por símbolo"""
         if not self.pool: return None
         async with self.pool.acquire() as conn:
             return await conn.fetchrow("SELECT * FROM wallets WHERE symbol = $1", symbol.upper())
 
     async def get_all_wallets(self):
-        """Lista todas las wallets"""
         if not self.pool: return []
         async with self.pool.acquire() as conn:
             return await conn.fetch("SELECT * FROM wallets ORDER BY symbol ASC")
 
     async def delete_wallet(self, symbol):
-        """Elimina una wallet"""
         if not self.pool: return False
         async with self.pool.acquire() as conn:
             res = await conn.execute("DELETE FROM wallets WHERE symbol = $1", symbol.upper())
             return res != "DELETE 0"
+
+    # ==========================================
+    # 🆕 MÉTODOS REQUEST/QUEUE (SISTEMA DE TICKETS)
+    # ==========================================
+
+    async def add_request(self, user_id, username, service):
+        """Agrega una petición si el usuario no tiene más de 5 pendientes"""
+        if not self.pool: return False, 0
+        async with self.pool.acquire() as conn:
+            # Verificar límite
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM requests WHERE user_id = $1 AND status IN ('pending', 'processing')", 
+                user_id
+            )
+            if count >= 5:
+                return False, count
+            
+            # Insertar
+            await conn.execute(
+                "INSERT INTO requests (user_id, username, service_name) VALUES ($1, $2, $3)",
+                user_id, username, service
+            )
+            return True, count + 1
+
+    async def get_user_position(self, user_id):
+        """Obtiene la posición en la fila"""
+        if not self.pool: return 0
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT user_id FROM requests WHERE status = 'pending' ORDER BY created_at ASC")
+            for index, row in enumerate(rows):
+                if row['user_id'] == user_id:
+                    return index + 1
+            return 0
+
+    async def get_queue_list(self):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            return await conn.fetch("SELECT * FROM requests WHERE status = 'pending' ORDER BY created_at ASC")
+
+    async def pop_next_request(self):
+        """Toma el siguiente pendiente y lo pone en processing"""
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1")
+            if row:
+                await conn.execute("UPDATE requests SET status = 'processing' WHERE id = $1", row['id'])
+                return row
+            return None
+
+    async def get_processing_request(self):
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow("SELECT * FROM requests WHERE status = 'processing' LIMIT 1")
+
+    async def finish_request(self, request_id, status):
+        if not self.pool: return
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE requests SET status = $1 WHERE id = $2", status, request_id)
 
 db = Database()
