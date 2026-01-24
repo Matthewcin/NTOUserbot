@@ -6,7 +6,7 @@ from database import db
 # ==========================================
 
 async def handler_request(event):
-    # .request DisneyPlus
+    # Comando: .request DisneyPlus
     text = event.message.text
     args = text.split()
     
@@ -17,10 +17,11 @@ async def handler_request(event):
     service = args[1].strip()
     user = await event.get_sender()
     user_id = user.id
+    # Intentar obtener username, si no tiene poner 'NoUser'
     username = getattr(user, 'username', 'NoUser') or 'NoUser'
 
     # Guardar en DB
-    success, current_count = await db.add_request(user_id, username, service)
+    success, _ = await db.add_request(user_id, username, service)
 
     if not success:
         await event.reply("❌ Tienes demasiadas peticiones pendientes (Máx 5). Espera a que atendamos las tuyas.")
@@ -30,14 +31,23 @@ async def handler_request(event):
     position = await db.get_user_position(user_id)
     
     if position == 1:
-        msg = f"✅ **{service} Request Received!**\n\n🚀 **You're Next!** (Queue #1)\nPlease wait for an admin DM."
+        # Si es el primero en la fila (o el siguiente inmediato)
+        msg = (
+            f"✅ **{service} Request Received!**\n\n"
+            f"🚀 **You're Next!** (Queue #1)\n"
+            f"Please stay online and prepare your DM."
+        )
     else:
-        msg = f"✅ **{service} Request Received!**\n\nYour Number in Queue is **#{position}**."
+        # Si hay gente delante
+        msg = (
+            f"✅ **{service} Request Received!**\n\n"
+            f"Your Number in Queue is **#{position}**."
+        )
 
     await event.reply(msg)
 
 async def handler_queue(event):
-    # .q o .queue
+    # Comando: .queue o .q
     user = await event.get_sender()
     position = await db.get_user_position(user.id)
 
@@ -46,14 +56,14 @@ async def handler_queue(event):
     elif position == 1:
         await event.reply("🚀 **You're Next!** (#1)\nPrepare your DM.")
     else:
-        await event.reply(f"clock: Estás en la posición **#{position}** de la fila.")
+        await event.reply(f"🕒 Estás en la posición **#{position}** de la fila.")
 
 # ==========================================
 # 👮‍♂️ COMANDOS DE ADMIN (SOLO TÚ)
 # ==========================================
 
 async def handler_qlist(event):
-    # .qlist - Ver la lista completa
+    # Comando: .qlist - Ver la lista completa
     if not event.out: return
 
     rows = await db.get_queue_list()
@@ -65,12 +75,13 @@ async def handler_qlist(event):
     msg = "📋 **QUEUE LIST**\n\n"
     for i, row in enumerate(rows):
         u_link = f"tg://user?id={row['user_id']}"
-        msg += f"**#{i+1}** - {row['service_name']} | <a href='{u_link}'>{row['username']}</a>\n"
+        display_name = row['username'] if row['username'] != 'NoUser' else f"ID:{row['user_id']}"
+        msg += f"**#{i+1}** - {row['service_name']} | <a href='{u_link}'>{display_name}</a>\n"
     
     await event.edit(msg, parse_mode='html')
 
 async def handler_qa(event):
-    # .qa - Aceptar el siguiente
+    # Comando: .qa - Aceptar (Accept) el siguiente request
     if not event.out: return
 
     # 1. Verificar si ya hay uno en proceso
@@ -79,7 +90,7 @@ async def handler_qa(event):
         await event.edit(f"⚠️ Ya estás atendiendo una petición: **{current['service_name']}** (User: {current['user_id']}).\nTermínala con `.qend` antes.")
         return
 
-    # 2. Tomar el siguiente
+    # 2. Tomar el siguiente de la DB
     req = await db.pop_next_request()
     
     if not req:
@@ -88,7 +99,8 @@ async def handler_qa(event):
 
     # 3. Notificar al Admin (Tú)
     user_link = f"tg://user?id={req['user_id']}"
-    chat_url = f"tg://resolve?domain={req['username']}" if req['username'] != 'NoUser' else user_link
+    # Si tiene username, el link lleva al chat, si no, usa el ID
+    chat_url = f"https://t.me/{req['username']}" if req['username'] != 'NoUser' else user_link
     
     await event.edit(
         f"👨‍💻 **ACCEPTING REQUEST**\n\n"
@@ -105,47 +117,63 @@ async def handler_qa(event):
             "Please stay online. I will contact you shortly if I have questions."
         )
     except:
-        await event.respond(f"⚠️ No pude enviar DM al usuario {req['user_id']} (Privacidad o bloqueo).")
+        # Si el usuario tiene privado bloqueado
+        await event.respond(f"⚠️ No pude enviar DM al usuario {req['user_id']} (Privacidad).")
 
 async def handler_qend(event):
-    # .qend success / .qend fail [razón] / .qend question [msg]
+    # Comandos: .qend success | .qend fail [razón] | .qend question [msg]
     if not event.out: return
 
     args = event.message.text.split(maxsplit=2)
-    action = args[1].lower() if len(args) > 1 else ""
-
-    # Obtener request actual
-    req = await db.get_processing_request()
-    if not req:
-        await event.edit("❌ No hay ninguna petición activa (`processing`). Usa `.qa` primero.")
+    if len(args) < 2:
+        await event.edit("❌ Uso: `.qend success` | `.qend fail [motivo]` | `.qend question [texto]`")
         return
 
-    # --- SUCCESS ---
+    action = args[1].lower()
+
+    # Obtener request que se está procesando
+    req = await db.get_processing_request()
+    if not req:
+        await event.edit("❌ No hay ninguna petición activa. Usa `.qa` para tomar una.")
+        return
+
+    # --- CASO SUCCESS (FINALIZAR CON ÉXITO) ---
     if action == "success":
         await db.finish_request(req['id'], 'completed')
         
-        # Avisar al usuario
+        # 1. Avisar al usuario actual
         try:
             await event.client.send_message(req['user_id'], 
                 f"✅ **Request Completed!**\n\nYour request for **{req['service_name']}** is done. Enjoy!"
             )
-        except:
-            pass
+        except: pass
 
-        # Mensaje final para ti
+        # 2. Mensaje final para ti
         await event.edit(f"✅ **Done.** Request #{req['id']} marked as success.")
         
-        # Mostrar el SIGUIENTE en Saved Messages
-        next_req = await db.get_queue_list()
-        if next_req:
-            top = next_req[0]
+        # 3. Revisar quién es el siguiente en la fila y notificar
+        next_req_list = await db.get_queue_list()
+        
+        if next_req_list:
+            top = next_req_list[0] # El siguiente en la fila
+            
+            # Avisar al Admin (Mensaje guardado o en el chat actual)
             await event.client.send_message('me', 
-                f"🔔 **NEXT UP:** {top['service_name']} from {top['username']}\nUse `.qa` to take it."
+                f"🔔 **NEXT UP:** {top['service_name']} requested by {top['username']}\n"
+                f"Use `.qa` to start processing it."
             )
+            
+            # Avisar al usuario que ahora es el #1 (Feature Extra)
+            try:
+                await event.client.send_message(top['user_id'],
+                    "🚀 **You are next!**\nYour request is now #1 in the queue. Get ready!"
+                )
+            except: pass
+
         else:
             await event.client.send_message('me', "🎉 Queue is empty! Good job.")
 
-    # --- FAIL ---
+    # --- CASO FAIL (FINALIZAR CON ERROR) ---
     elif action == "fail":
         reason = args[2] if len(args) > 2 else "Unavailable"
         await db.finish_request(req['id'], 'failed')
@@ -154,12 +182,11 @@ async def handler_qend(event):
             await event.client.send_message(req['user_id'], 
                 f"❌ **Request Failed**\n\nService: {req['service_name']}\nReason: {reason}"
             )
-        except:
-            pass
+        except: pass
             
         await event.edit(f"🗑 **Request Dropped.** User notified.")
 
-    # --- QUESTION ---
+    # --- CASO QUESTION (PREGUNTAR ALGO) ---
     elif action == "question":
         if len(args) < 3:
             await event.edit("❌ Escribe la pregunta: `.qend question ¿Tienes VPN?`")
@@ -172,7 +199,7 @@ async def handler_qend(event):
             )
             await event.edit(f"✉️ Pregunta enviada al usuario.")
         except:
-            await event.edit("❌ No se pudo enviar mensaje al usuario.")
+            await event.edit("❌ No se pudo enviar mensaje al usuario (Privacidad).")
 
     else:
-        await event.edit("❌ Uso: `.qend success` | `.qend fail [razón]` | `.qend question [msg]`")
+        await event.edit("❌ Acción desconocida. Usa success, fail o question.")
