@@ -19,7 +19,7 @@ class Database:
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
-            # Tablas Base
+            # Tablas Base (Productos, Ordenes, Settings, Licencias, Wallets, Requests)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id SERIAL PRIMARY KEY,
@@ -47,7 +47,6 @@ class Database:
                     value TEXT
                 );
             """)
-            # Tabla Licencias
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS licenses (
                     user_id BIGINT PRIMARY KEY,
@@ -59,7 +58,6 @@ class Database:
             try: await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
             except: pass
             
-            # Tabla Wallets (Crypto)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS wallets (
                     symbol TEXT PRIMARY KEY,
@@ -67,8 +65,6 @@ class Database:
                     network TEXT NOT NULL
                 );
             """)
-
-            # 🆕 TABLA REQUESTS (COLA DE PEDIDOS)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS requests (
                     id SERIAL PRIMARY KEY,
@@ -79,6 +75,99 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            # 🆕 NUEVA TABLA: CONFIGS
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS configs (
+                    id SERIAL PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT DEFAULT '🟢',
+                    price TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(category, name)
+                );
+            """)
+            
+            # 🆕 POBLAR LISTA INICIAL SI ESTÁ VACÍA
+            count = await conn.fetchval("SELECT COUNT(*) FROM configs")
+            if count == 0:
+                print("⚙️ Insertando lista inicial de Configs...")
+                initial_data = [
+                    # STREAMING
+                    ('STREAMING', 'AMCTheatres', ''), ('STREAMING', 'Allente', ''), ('STREAMING', 'Bally Sports', ''),
+                    ('STREAMING', 'Britbox', ''), ('STREAMING', 'Crunchyroll', ''), ('STREAMING', 'Curiosity Stream', ''),
+                    ('STREAMING', 'Dazn (Ask me for TLS!)', ''), ('STREAMING', 'DirecTV Stream + DirecTV AT&T', ''),
+                    ('STREAMING', 'Disney+', ''), ('STREAMING', 'FloSports', ''), ('STREAMING', 'Fox', ''),
+                    ('STREAMING', 'FuboTV + FuboTV TLS', ''), ('STREAMING', 'Hulu VM', ''), ('STREAMING', 'ITVX', ''),
+                    ('STREAMING', 'MLB', ''), ('STREAMING', 'Marcus Theatres', ''), ('STREAMING', 'NBA League Pass', ''),
+                    ('STREAMING', 'NFL + NFL Gamepass', ''), ('STREAMING', 'NHL TV', ''), ('STREAMING', 'Peacock', ''),
+                    ('STREAMING', 'PlexTV', ''), ('STREAMING', 'PluralSight', ''), ('STREAMING', 'Pureflix', ''),
+                    ('STREAMING', 'Rakuten TV', ''), ('STREAMING', 'Season4U', ''), ('STREAMING', 'Shudder', ''),
+                    ('STREAMING', 'SportTV', ''), ('STREAMING', 'Starz', ''), ('STREAMING', 'Tennis TV', ''),
+                    ('STREAMING', 'UFC', ''), ('STREAMING', 'VSiN Sports', ''), ('STREAMING', 'Viki Rakuten', ''),
+                    ('STREAMING', 'WWE-Network', ''),
+
+                    # GAMING
+                    ('GAMING', 'ABYA (GeForceNOW)', ''), ('GAMING', 'GeoGuessr', ''), ('GAMING', 'Steam', ''),
+                    ('GAMING', 'Ubisoft Connect', ''), ('GAMING', 'XBOX+Outlook', ''),
+
+                    # EDUCATION
+                    ('EDUCATION', 'BentBox', ''), ('EDUCATION', 'Codecademy', ''), ('EDUCATION', 'Chegg', ''),
+                    ('EDUCATION', 'Chordify', ''), ('EDUCATION', 'Crehana', ''), ('EDUCATION', 'Domestika', ''),
+                    ('EDUCATION', 'Front-End Masters', ''), ('EDUCATION', 'GetAbstract', ''), ('EDUCATION', 'Magoosh', ''),
+                    ('EDUCATION', 'Masterclass', ''), ('EDUCATION', 'Mimo', ''), ('EDUCATION', 'Mindvalley', ''),
+                    ('EDUCATION', 'Mubi', ''), ('EDUCATION', 'Quizlet', ''), ('EDUCATION', 'RealVision', ''),
+                    ('EDUCATION', 'Storytel', ''), ('EDUCATION', 'Studocu', ''), ('EDUCATION', 'Study Mode', ''),
+                    ('EDUCATION', 'Symbolab', ''), ('EDUCATION', 'Transtutors', ''), ('EDUCATION', 'Ultimate Guitar', ''),
+                    ('EDUCATION', 'Yousician', ''),
+
+                    # ADULT
+                    ('ADULT', 'Flingster', ''), ('ADULT', 'Nubiles Porn', ''), ('ADULT', 'Pornhub', ''),
+                    ('ADULT', 'VR Porn', ''), ('ADULT', 'XVideos', ''),
+
+                    # FOOD
+                    ('FOOD', '&Pizza', ''), ('FOOD', 'Chopt', ''), ('FOOD', 'Dasher Direct', ''),
+                    ('FOOD', 'Del Taco', ''), ('FOOD', 'Dominos CA', ''), ('FOOD', 'FoodHub', ''),
+                    ('FOOD', 'MakeItCount', ''), ('FOOD', 'Maverik Rewards', ''), ('FOOD', 'PedidosYa', ''),
+                    ('FOOD', 'PizzaHut USA', ''), ('FOOD', 'Safeway', ''), ('FOOD', 'ShakeShack', ''),
+                    ('FOOD', 'Shipt', ''), ('FOOD', 'Wingstop', ''),
+
+                    # VPN
+                    ('VPN', 'CactusVPN', ''), ('VPN', 'DotVPN', ''), ('VPN', 'IPVanish', ''),
+                    ('VPN', 'Malwarebytes', ''), ('VPN', 'Mullvad VPN', ''), ('VPN', 'TunnelBear', ''),
+                    ('VPN', 'VyprVPN', ''), ('VPN', 'Windscribe (App Version Error)', ''),
+
+                    # SHOP
+                    ('SHOP', "Arc'teryx", ''), ('SHOP', 'Engelhorn.de', ''), ('SHOP', 'Farfetch', ''),
+                    ('SHOP', 'Fashion Nova', ''), ('SHOP', 'FashionDays', ''), ('SHOP', 'Fitbit', ''),
+                    ('SHOP', 'Guitar Center', ''), ('SHOP', 'PlayOn', ''), ('SHOP', 'RackRoom Shoes', ''),
+                    ('SHOP', 'SSense', ''), ('SHOP', 'Tanguay', ''),
+
+                    # UNSORTED
+                    ('UNSORTED', 'AhRefs', ''), ('UNSORTED', 'BetterMe', ''), ('UNSORTED', 'Calm', ''),
+                    ('UNSORTED', 'Codefinity', ''), ('UNSORTED', 'Coohom', ''), ('UNSORTED', 'Evernote', ''),
+                    ('UNSORTED', 'FakeYou', ''), ('UNSORTED', 'Figma', ''), ('UNSORTED', 'Headspace', ''),
+                    ('UNSORTED', 'InVideo', ''), ('UNSORTED', 'Kismia Dating', ''), ('UNSORTED', 'Lenme', ''),
+                    ('UNSORTED', 'Let\'s Enhance', ''), ('UNSORTED', 'Mail VM', ''), ('UNSORTED', 'Meditopia', ''),
+                    ('UNSORTED', 'MLB Ballpark', ''), ('UNSORTED', 'Napster', ''), ('UNSORTED', 'Onedrive + File Filter', ''),
+                    ('UNSORTED', 'Outlook (Hotmail)', ''), ('UNSORTED', 'Outlook (Hotmail) Inbox Searcher', ''),
+                    ('UNSORTED', 'Palia', ''), ('UNSORTED', 'Quillbot', ''), ('UNSORTED', 'RealTrends', ''),
+                    ('UNSORTED', 'Soundtrap', ''), ('UNSORTED', 'Speechify', ''), ('UNSORTED', 'TradingView', ''),
+                    ('UNSORTED', 'Viki K-Drama', ''), ('UNSORTED', 'Windstream', ''), ('UNSORTED', 'YCharts', ''),
+                    ('UNSORTED', 'eHarmony Dating', ''),
+
+                    # PRIVATE
+                    ('PRIVATE', 'Roblox (TLS)', '$200 USD'), ('PRIVATE', 'American Airlines', '$250 USD'),
+                    ('PRIVATE', 'Hollister & Co', '$60 USD'), ('PRIVATE', 'StripChat (CapSolver)', '$100 USD'),
+                    ('PRIVATE', 'REWE (Only Login / Capsolver)', '$25 USD'), ('PRIVATE', 'Degoo Storage Cloud', '$250 USD'),
+                    ('PRIVATE', 'ShopLC', '$100 USD'), ('PRIVATE', 'E-Bank Patagonia', '$300 USD'),
+                    ('PRIVATE', 'Wall Street Journal', '$75 USD'), ('PRIVATE', 'NYTimes', '$75 USD')
+                ]
+                await conn.executemany(
+                    "INSERT INTO configs (category, name, price) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    initial_data
+                )
 
     # --- MÉTODOS PRODUCTOS ---
     async def get_product(self, key):
@@ -217,23 +306,16 @@ class Database:
             res = await conn.execute("DELETE FROM wallets WHERE symbol = $1", symbol.upper())
             return res != "DELETE 0"
 
-    # ==========================================
-    # 🆕 MÉTODOS REQUEST/QUEUE (SISTEMA DE TICKETS)
-    # ==========================================
-
+    # --- MÉTODOS REQUEST/QUEUE (SISTEMA DE TICKETS) ---
     async def add_request(self, user_id, username, service):
-        """Agrega una petición si el usuario no tiene más de 5 pendientes"""
         if not self.pool: return False, 0
         async with self.pool.acquire() as conn:
-            # Verificar límite
             count = await conn.fetchval(
                 "SELECT COUNT(*) FROM requests WHERE user_id = $1 AND status IN ('pending', 'processing')", 
                 user_id
             )
             if count >= 5:
                 return False, count
-            
-            # Insertar
             await conn.execute(
                 "INSERT INTO requests (user_id, username, service_name) VALUES ($1, $2, $3)",
                 user_id, username, service
@@ -241,7 +323,6 @@ class Database:
             return True, count + 1
 
     async def get_user_position(self, user_id):
-        """Obtiene la posición en la fila"""
         if not self.pool: return 0
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT user_id FROM requests WHERE status = 'pending' ORDER BY created_at ASC")
@@ -256,7 +337,6 @@ class Database:
             return await conn.fetch("SELECT * FROM requests WHERE status = 'pending' ORDER BY created_at ASC")
 
     async def pop_next_request(self):
-        """Toma el siguiente pendiente y lo pone en processing"""
         if not self.pool: return None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM requests WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1")
@@ -274,5 +354,55 @@ class Database:
         if not self.pool: return
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE requests SET status = $1 WHERE id = $2", status, request_id)
+
+    async def delete_request(self, request_id):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            res = await conn.execute("DELETE FROM requests WHERE id = $1", request_id)
+            return res != "DELETE 0"
+
+    # 🆕 MÉTODOS CONFIGS MANAGEMENT
+    async def get_all_configs(self):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            return await conn.fetch("SELECT * FROM configs ORDER BY category, name ASC")
+
+    async def add_config(self, category, name, price=""):
+        if not self.pool: return False
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO configs (category, name, price) VALUES ($1, $2, $3)",
+                    category.upper(), name, price
+                )
+            return True
+        except: return False
+
+    async def del_config(self, category, name):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            res = await conn.execute(
+                "DELETE FROM configs WHERE category = $1 AND name ILIKE $2",
+                category.upper(), name
+            )
+            return res != "DELETE 0"
+
+    async def update_config_status(self, category, name, new_status):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            res = await conn.execute(
+                "UPDATE configs SET status = $1 WHERE category = $2 AND name ILIKE $3",
+                new_status, category.upper(), name
+            )
+            return res != "UPDATE 0"
+
+    async def update_config_price(self, category, name, new_price):
+        if not self.pool: return False
+        async with self.pool.acquire() as conn:
+            res = await conn.execute(
+                "UPDATE configs SET price = $1 WHERE category = $2 AND name ILIKE $3",
+                new_price, category.upper(), name
+            )
+            return res != "UPDATE 0"
 
 db = Database()
