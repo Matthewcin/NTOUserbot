@@ -3,7 +3,6 @@ from telethon import events
 # Importamos handler_guide de general
 from .welcome import handler_welcome, handler_hello
 from .general import handler_help, handler_cmds, handler_urldebug, handler_guide 
-# NOTA: Se eliminó handler_request de general porque ahora usamos el nuevo sistema
 
 from .status import handler_status
 from .shop import handler_list, handler_info, handler_buy
@@ -15,13 +14,24 @@ from .admin import (
 )
 from .openbullet import handler_redeem, handler_changeip
 
-# --- NUEVO SISTEMA DE COLA ---
+# --- QUEUE SYSTEM ---
 from .queue_system import (
     handler_request, 
     handler_queue, 
     handler_qlist, 
     handler_qa, 
-    handler_qend
+    handler_qs,
+    handler_qend,
+    handler_qdel
+)
+
+# 🆕 NUEVOS HANDLERS CONFIGS
+from .configs import (
+    handler_cfglist,
+    handler_addcfg,
+    handler_delcfg,
+    handler_cfgstatus,
+    handler_editcfg
 )
 
 def register_all_handlers(client):
@@ -35,15 +45,17 @@ def register_all_handlers(client):
     client.add_event_handler(handler_urldebug, events.NewMessage(pattern=r'(?i)\.urldebug(?:\s+(.*))?'))
     client.add_event_handler(handler_guide, events.NewMessage(pattern=r'(?i)\.guide'))
     
-    # --- QUEUE SYSTEM (Reemplaza al request viejo) ---
-    # Comandos de usuario
+    # --- QUEUE SYSTEM ---
+    # User
     client.add_event_handler(handler_request, events.NewMessage(pattern=r'(?i)\.request(?:\s+(.*))?'))
     client.add_event_handler(handler_queue, events.NewMessage(pattern=r'(?i)\.(queue|q)$'))
     
-    # Comandos de Admin (Userbot)
+    # Admin (Userbot)
     client.add_event_handler(handler_qlist, events.NewMessage(outgoing=True, pattern=r'(?i)\.qlist$'))
     client.add_event_handler(handler_qa, events.NewMessage(outgoing=True, pattern=r'(?i)\.qa$'))
+    client.add_event_handler(handler_qs, events.NewMessage(outgoing=True, pattern=r'(?i)\.qs$'))
     client.add_event_handler(handler_qend, events.NewMessage(outgoing=True, pattern=r'(?i)\.qend\s+(.*)'))
+    client.add_event_handler(handler_qdel, events.NewMessage(outgoing=True, pattern=r'(?i)\.qdel\s+(.*)'))
     
     # Status
     client.add_event_handler(handler_status, events.NewMessage(pattern=r'(?i)\.status(?:\s+(.*))?'))
@@ -76,3 +88,10 @@ def register_all_handlers(client):
     client.add_event_handler(handler_payedit, events.NewMessage(outgoing=True, pattern=r'(?i)\.payedit\s+(.*)'))
     client.add_event_handler(handler_paylist, events.NewMessage(outgoing=True, pattern=r'(?i)\.paylist'))
     client.add_event_handler(handler_paycheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.paycheck\s+(.*)'))
+
+    # 🆕 NUEVOS HANDLERS CONFIGS
+    client.add_event_handler(handler_cfglist, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfglist$'))
+    client.add_event_handler(handler_addcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.addcfg\s+(.*)'))
+    client.add_event_handler(handler_delcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.delcfg\s+(.*)'))
+    client.add_event_handler(handler_cfgstatus, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgstatus\s+(.*)'))
+    client.add_event_handler(handler_editcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.editcfg\s+(.*)'))
