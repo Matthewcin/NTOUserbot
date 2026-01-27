@@ -79,7 +79,6 @@ async def handler_qlist(event):
         # Usamos formato Markdown para el link: [Texto](URL)
         msg += f"**#{i+1}** - {row['service_name']} | [{display_name}]({u_link})\n"
     
-    # Quitamos parse_mode='html' para que funcionen los **
     await event.edit(msg)
 
 async def handler_qa(event):
@@ -120,7 +119,6 @@ async def handler_qa(event):
     except:
         await event.respond(f"⚠️ Unexpected Error Sending DM to {req['user_id']} (Private).")
 
-# --- COMANDO .QS (QUEUE STATUS) ---
 async def handler_qs(event):
     # Comando: .qs - Ver ticket actual
     if not event.out: return
@@ -134,7 +132,6 @@ async def handler_qs(event):
     user_link = f"tg://user?id={req['user_id']}"
     chat_url = f"https://t.me/{req['username']}" if req['username'] != 'NoUser' else user_link
     
-    # Formato Markdown
     await event.edit(
         f"🚧 **CURRENT TICKET INFO**\n\n"
         f"📦 **Service:** {req['service_name']}\n"
@@ -165,7 +162,7 @@ async def handler_qend(event):
     if action == "success":
         await db.finish_request(req['id'], 'completed')
         
-        # 1. Avisar al usuario actual (ticket terminado)
+        # 1. Avisar al usuario actual
         try:
             await event.client.send_message(req['user_id'], 
                 f"✅ **Request Completed!**\n\nYour request for **{req['service_name']}** is done.!"
@@ -175,7 +172,7 @@ async def handler_qend(event):
         # 2. Mensaje final para ti
         await event.edit(f"✅ **Done.** Request #{req['id']} marked as success.")
         
-        # 3. AUTO-PING: Revisar quién es el siguiente y avisarle
+        # 3. Revisar quién es el siguiente en la fila y notificar (Auto-Ping)
         next_req_list = await db.get_queue_list()
         
         if next_req_list:
@@ -187,13 +184,12 @@ async def handler_qend(event):
                 f"Use `.qa` to start processing it."
             )
             
-            # ---> AQUI ESTÁ EL AUTO-PING <---
+            # Avisar al usuario que ahora es el #1
             try:
                 await event.client.send_message(top['user_id'],
                     "🚀 **You are next!**\nYour request is now #1 in the queue. Get ready!"
                 )
             except: pass
-            # -------------------------------
 
         else:
             await event.client.send_message('me', "🎉 Queue is empty! Good job.")
@@ -214,7 +210,7 @@ async def handler_qend(event):
     # --- CASO QUESTION (PREGUNTAR ALGO) ---
     elif action == "question":
         if len(args) < 3:
-            await event.edit("❌ Write a Question: `.qend question ¿Do you have VPN? / ¿Can you send any account for testing?`")
+            await event.edit("❌ Write a Question: `.qend question ...`")
             return
         
         question = args[2]
@@ -228,3 +224,40 @@ async def handler_qend(event):
 
     else:
         await event.edit("❌ Unknown Command. Use success, fail or question.")
+
+# --- COMANDO .QDEL (BORRAR PEDIDO) ---
+async def handler_qdel(event):
+    # Comando: .qdel [numero]
+    if not event.out: return
+    
+    args = event.message.text.split()
+    if len(args) < 2:
+        await event.edit("❌ Use: `.qdel [number]` (Check `.qlist` first)")
+        return
+        
+    try:
+        index_to_delete = int(args[1]) - 1 
+    except ValueError:
+        await event.edit("❌ Error: You must specify a Number. Ex: `.qdel 1`")
+        return
+
+    rows = await db.get_queue_list()
+    
+    if not rows:
+        await event.edit("📭 Queue is empty.")
+        return
+
+    if index_to_delete < 0 or index_to_delete >= len(rows):
+        await event.edit(f"❌ Number #{args[1]} not found in Queue.")
+        return
+        
+    target_req = rows[index_to_delete]
+    await db.delete_request(target_req['id'])
+    
+    try:
+        await event.client.send_message(target_req['user_id'], 
+            f"🗑 **Request Cancelled**\n\nYour request for **{target_req['service_name']}** has been removed by the admin."
+        )
+    except: pass
+    
+    await event.edit(f"🗑 **Deleted:** Request #{args[1]} ({target_req['service_name']}) removed from queue.")
