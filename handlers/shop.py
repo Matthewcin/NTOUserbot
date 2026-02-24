@@ -7,20 +7,27 @@ from telethon import events
 from database import db
 import config
 from .crypto_utils import crypto_check
+from handlers.utils import can_run_command
+
+async def reply_or_edit(event, text):
+    if event.out:
+        await event.edit(text, parse_mode='html')
+    else:
+        await event.reply(text, parse_mode='html')
 
 async def handler_list(event):
-    if not event.out and not event.is_private: return
+    if not await can_run_command(event): return
     
     try:
         if not db.pool:
-            await event.edit("❌ Error: DB Disconnected.")
+            await reply_or_edit(event, "❌ Error: DB Disconnected.")
             return
 
         async with db.pool.acquire() as conn:
             rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
         
         if not rows:
-            await event.edit("📂 **EMPTY CATALOG**")
+            await reply_or_edit(event, "📂 **EMPTY CATALOG**")
             return
         
         msg = "🛒 **AVAILABLE PRODUCTS**\n\n"
@@ -32,18 +39,18 @@ async def handler_list(event):
         msg += "ℹ️ Use <code>.info [key]</code> to see details.\n"
         msg += "💳 Use <code>.buy [key] [BTC/LTC]</code> to buy."
         
-        await event.edit(msg, parse_mode='html')
+        await reply_or_edit(event, msg)
         
     except Exception as e:
-        await event.edit(f"❌ Error listing products: {e}")
+        await reply_or_edit(event, f"❌ Error listing products: {e}")
         traceback.print_exc()
 
 async def handler_info(event):
-    if not event.out and not event.is_private: return
+    if not await can_run_command(event): return
     
     args = event.message.text.split()
     if len(args) < 2:
-        await event.edit("ℹ️ Usage: `.info [key]`")
+        await reply_or_edit(event, "ℹ️ Usage: `.info [key]`")
         return
         
     key = args[1].lower().strip()
@@ -52,7 +59,7 @@ async def handler_info(event):
         product = await db.get_product(key)
         
         if not product:
-            await event.edit(f"❌ Product `{key}` not found.")
+            await reply_or_edit(event, f"❌ Product `{key}` not found.")
             return
             
         msg = (
@@ -63,17 +70,17 @@ async def handler_info(event):
             f"📝 <b>Description:</b>\n{product.get('description', 'No description')}\n\n"
             f"🛒 Buy: <code>.buy {key} [SYMBOL]</code>"
         )
-        await event.edit(msg, parse_mode='html')
+        await reply_or_edit(event, msg)
         
     except Exception as e:
-        await event.edit(f"❌ Error: {e}")
+        await reply_or_edit(event, f"❌ Error: {e}")
 
 async def handler_buy(event):
-    if not event.out and not event.is_private: return
+    if not await can_run_command(event): return
     
     args = event.message.text.split()
     if len(args) < 3:
-        await event.edit("❌ **Usage:** `.buy [product_key] [SYMBOL]`\nExample: `.buy premium btc`")
+        await reply_or_edit(event, "❌ **Usage:** `.buy [product_key] [SYMBOL]`\nExample: `.buy premium btc`")
         return
     
     product_key = args[1].lower()
@@ -81,12 +88,12 @@ async def handler_buy(event):
     
     product = await db.get_product(product_key)
     if not product:
-        await event.edit(f"❌ Product `{product_key}` not found.")
+        await reply_or_edit(event, f"❌ Product `{product_key}` not found.")
         return
 
     wallet_data = await db.get_wallet(symbol)
     if not wallet_data:
-        await event.edit(f"❌ Wallet for {symbol} not configured.")
+        await reply_or_edit(event, f"❌ Wallet for {symbol} not configured.")
         return
 
     usd_price_base = float(product['price_usd'])
@@ -111,13 +118,11 @@ async def handler_buy(event):
         f"⚠️ <b>Reply to this message ONLY with the TXID (Hash).</b>"
     )
 
-    await event.delete()
-    
-    sent_msg = await event.client.send_message(
-        event.chat_id, 
-        order_msg, 
-        parse_mode='html'
-    )
+    if event.out:
+        await event.delete()
+        await event.client.send_message(event.chat_id, order_msg, parse_mode='html')
+    else:
+        await event.reply(order_msg, parse_mode='html')
 
     try:
         async with event.client.conversation(event.chat_id, timeout=600) as conv:
