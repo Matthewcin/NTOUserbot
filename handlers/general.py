@@ -1,5 +1,5 @@
 import os
-from telethon import events, Button
+from telethon import events
 import config
 from database import db
 from handlers.utils import can_run_command
@@ -36,7 +36,7 @@ async def handler_cmds(event):
         "🔹 <code>.status check [svb/ob2]</code> » Deep debug\n"
         "🔹 <code>.request [text]</code> » Send message to Admin\n"
         "🔹 <code>.urldebug [url]</code> » Test link formats\n"
-        "🔹 <code>.testbtn</code> » Test URL buttons"
+        "🔹 <code>.testbtn</code> » Test URL links"
     )
 
     full_msg = intro + store + licenses + system
@@ -85,17 +85,11 @@ async def handler_testbtn(event):
     await event.delete()
     
     text = (
-        "🤖 **VirusNTO Button Test**\n"
+        "🤖 <b>VirusNTO Link Test</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "Este es un mensaje enviado desde una cuenta de usuario\n"
-        "utilizando botones de tipo enlace (URL)."
+        "This is a message sent from a user account.\n\n"
+        "🌐 <a href='https://virusnto.com'><b>[ VISIT WEBSITE ]</b></a>\n\n"
+        "💬 <a href='https://t.me/whois_tyler'><b>[ CONTACT ADMIN ]</b></a>"
     )
     
-    await event.client.send_message(
-        event.chat_id,
-        text,
-        buttons=[
-            [Button.url("🌐 Visitar Web", "https://virusnto.com")],
-            [Button.url("💬 Contactar Admin", "https://t.me/whois_tyler")]
-        ]
-    )
+    await event.client.send_message(event.chat_id, text, parse_mode='html')
