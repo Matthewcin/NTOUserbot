@@ -4,7 +4,7 @@ from .welcome import handler_welcome, handler_hello
 from .general import handler_help, handler_cmds, handler_urldebug, handler_guide, handler_testbtn
 
 from .status import handler_status
-from .shop import handler_list, handler_info, handler_buy
+from .shop import handler_list, handler_info, handler_buy, handler_txid
 from .admin import (
     handler_secret_menu, 
     handler_add, handler_del, handler_edit, handler_warn,
@@ -55,6 +55,8 @@ def register_all_handlers(client):
     client.add_event_handler(handler_list, events.NewMessage(pattern=r'(?i)\.list'))
     client.add_event_handler(handler_info, events.NewMessage(pattern=r'(?i)\.info(?:\s+(.*))?'))
     client.add_event_handler(handler_buy, events.NewMessage(pattern=r'(?i)\.buy(?:\s+(.*))?'))
+    
+    client.add_event_handler(handler_txid, events.NewMessage())
     
     client.add_event_handler(handler_redeem, events.NewMessage(pattern=r'(?i)\.redeem(?:\s+(.*))?'))
     client.add_event_handler(handler_changeip, events.NewMessage(pattern=r'(?i)\.changeip(?:\s+(.*))?'))
