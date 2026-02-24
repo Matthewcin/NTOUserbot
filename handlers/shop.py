@@ -1,162 +1,130 @@
-import requests
-import uuid
-import traceback
+import asyncio
 from telethon import events
 from database import db
 import config
+from .crypto_utils import crypto_check
 
-# ==========================================
-# 🔹 1. FUNCIONES AUXILIARES (OxaPay)
-# ==========================================
-
-async def create_oxapay_link(amount, order_id):
-    url = "https://api.oxapay.com/merchants/request"
-    
-    data = {
-        "merchant": config.OXAPAY_KEY,
-        "amount": amount,
-        "currency": "USD",
-        "lifeTime": 30,
-        "feePaidByPayer": 0,
-        "underPaidCover": 2.5,
-        "callbackUrl": config.WEBHOOK_URL,
-        "returnUrl": "https://t.me/Virusnto",
-        "description": f"Order {order_id}",
-        "orderId": order_id
-    }
-    
-    try:
-        response = requests.post(url, json=data, timeout=10)
-        res_json = response.json()
-        
-        if res_json.get("result") == 100:
-            return {
-                "url": res_json.get("payLink"),
-                "trackId": res_json.get("trackId")
-            }
-        else:
-            print(f"❌ Error OxaPay: {res_json}")
-            return None
-    except Exception as e:
-        print(f"⚠️ Exception OxaPay: {e}")
-        return None
-
-# ==========================================
-# 🔹 2. HANDLERS (Comandos)
-# ==========================================
-
-# --- COMANDO .LIST (Faltaba este) ---
 async def handler_list(event):
-    if not event.out: return
+    if not event.out and not event.is_private: return
     
     try:
-        # Obtenemos todos los productos de la DB
-        # Nota: Asumimos que db.pool existe. Hacemos la query directa aquí para asegurar.
         if not db.pool:
-            await event.edit("❌ Error: Base de datos no conectada.")
+            await event.edit("❌ Error: DB Disconnected.")
             return
 
         async with db.pool.acquire() as conn:
             rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
         
         if not rows:
-            await event.edit("📂 **CATÁLOGO VACÍO**\nNo hay productos en venta aún.")
+            await event.edit("📂 **EMPTY CATALOG**")
             return
         
-        # Construimos el mensaje
-        msg = "🛒 **PRODUCTOS DISPONIBLES**\n\n"
+        msg = "🛒 **AVAILABLE PRODUCTS**\n\n"
         for row in rows:
             msg += f"🔹 <b>{row['display_name']}</b>\n"
             msg += f"   ├ Key: <code>{row['key_name']}</code>\n"
-            msg += f"   └ Precio: ${row['price_usd']}\n\n"
+            msg += f"   └ Price: ${row['price_usd']}\n\n"
             
-        msg += "ℹ️ Usa <code>.info [key]</code> para ver detalles.\n"
-        msg += "💳 Usa <code>.buy [key]</code> para comprar."
+        msg += "ℹ️ Use <code>.info [key]</code> for details.\n"
+        msg += "💳 Use <code>.buy [key] [BTC/LTC]</code> to purchase."
         
-        await event.edit(msg, parse_mode='html')
-        
-    except Exception as e:
-        await event.edit(f"❌ Error al listar: {e}")
-        traceback.print_exc()
-
-# --- COMANDO .INFO (Faltaba este también) ---
-async def handler_info(event):
-    if not event.out: return
-    
-    args = event.message.text.split()
-    if len(args) < 2:
-        await event.edit("ℹ️ Uso: `.info [key_producto]`")
-        return
-        
-    key = args[1].lower().strip()
-    
-    try:
-        product = await db.get_product(key)
-        
-        if not product:
-            await event.edit(f"❌ Producto `{key}` no encontrado.")
-            return
-            
-        msg = (
-            f"📦 <b>{product['display_name']}</b>\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"💰 <b>Precio:</b> ${product['price_usd']} USD\n"
-            f"🔑 <b>Key:</b> <code>{product['key_name']}</code>\n\n"
-            f"📝 <b>Descripción:</b>\n{product.get('description', 'Sin descripción')}\n\n"
-            f"🛒 Para comprar escribe: <code>.buy {key}</code>"
-        )
         await event.edit(msg, parse_mode='html')
         
     except Exception as e:
         await event.edit(f"❌ Error: {e}")
 
-# --- COMANDO .BUY (El de OxaPay) ---
-async def handler_buy(event):
-    if not event.out: return
-    
+async def handler_info(event):
+    if not event.out and not event.is_private: return
     args = event.message.text.split()
     if len(args) < 2:
-        await event.edit("❌ **Uso:** `.buy [key_producto]`")
+        await event.edit("ℹ️ Usage: `.info [key]`")
+        return
+        
+    key = args[1].lower().strip()
+    product = await db.get_product(key)
+    
+    if not product:
+        await event.edit(f"❌ Product `{key}` not found.")
+        return
+            
+    msg = (
+        f"📦 <b>{product['display_name']}</b>\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"💰 <b>Price:</b> ${product['price_usd']} USD\n"
+        f"🔑 <b>Key:</b> <code>{product['key_name']}</code>\n\n"
+        f"📝 <b>Description:</b>\n{product.get('description', 'No desc')}\n\n"
+        f"🛒 Buy: <code>.buy {key} [SYMBOL]</code>"
+    )
+    await event.edit(msg, parse_mode='html')
+
+async def handler_buy(event):
+    if not event.out and not event.is_private: return
+    
+    args = event.message.text.split()
+    if len(args) < 3:
+        await event.edit("❌ **Usage:** `.buy [product_key] [SYMBOL]`\nExample: `.buy premium btc`")
         return
     
-    product_key = args[1].strip().lower()
+    product_key = args[1].lower()
+    symbol = args[2].upper()
     
-    try:
-        await event.edit(f"🔍 Buscando `{product_key}`...")
-        product = await db.get_product(product_key)
-        
-        if not product:
-            await event.edit(f"❌ Producto `{product_key}` no existe.")
-            return
-        
-        await event.edit("🔄 **Creando factura crypto...**")
-        
-        amount = float(product['price_usd'])
-        order_id = str(uuid.uuid4())[:8]
-        
-        payment_data = await create_oxapay_link(amount, order_id)
-        
-        if payment_data:
-            await db.create_order(
-                order_id, 
-                payment_data['trackId'], 
-                event.chat_id, 
-                product_key, 
-                amount
-            )
-            
-            mensaje_final = (
-                f"🛒 <b>ORDEN CREADA</b>\n\n"
-                f"📦 <b>Item:</b> {product['display_name']}\n"
-                f"💵 <b>Total:</b> ${amount} USD\n"
-                f"🆔 <b>ID:</b> <code>{order_id}</code>\n\n"
-                f"👉 <a href='{payment_data['url']}'><b>[ PAGAR AHORA ]</b></a>\n\n"
-                f"<i>⏳ Expira en 30 minutos.</i>"
-            )
-            await event.edit(mensaje_final, parse_mode='html', link_preview=False)
-        else:
-            await event.edit("❌ Error API OxaPay.")
+    product = await db.get_product(product_key)
+    if not product:
+        await event.edit(f"❌ Product `{product_key}` not found.")
+        return
 
-    except Exception as e:
-        await event.edit(f"❌ Error: {str(e)}")
-        traceback.print_exc()
+    wallet_data = await db.get_wallet(symbol)
+    if not wallet_data:
+        await event.edit(f"❌ Wallet for {symbol} not configured.")
+        return
+
+    # Calcular cantidad en Crypto
+    usd_price = float(product['price_usd'])
+    crypto_price = crypto_check.get_crypto_price(symbol)
+    amount_crypto = round(usd_price / crypto_price, 8)
+
+    order_msg = (
+        f"💳 <b>PAYMENT INSTRUCTIONS</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📦 <b>Item:</b> {product['display_name']}\n"
+        f"💵 <b>Total:</b> ${usd_price} USD\n"
+        f"💰 <b>Send:</b> <code>{amount_crypto}</code> {symbol}\n\n"
+        f"📍 <b>Address ({wallet_data['network']}):</b>\n<code>{wallet_data['address']}</code>\n\n"
+        f"⚠️ <b>After sending, reply to THIS message with ONLY the TXID (Hash).</b>"
+    )
+
+    sent_msg = await event.edit(order_msg, parse_mode='html')
+
+    # Sistema de espera de TXID
+    try:
+        async with event.client.conversation(event.chat_id, timeout=600) as conv:
+            response = await conv.get_response()
+            txid = response.text.strip()
+            
+            await event.respond("🔍 **Verifying transaction...**")
+            
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            
+            success = False
+            if symbol == 'BTC':
+                success, amount, confs, note = crypto_check.check_btc(txid, wallet_data['address'], now)
+            elif symbol == 'LTC':
+                success, amount, confs, note = crypto_check.check_ltc(txid, wallet_data['address'], now)
+            else:
+                await event.respond("❌ Only BTC/LTC supported for auto-check.")
+                return
+
+            if success and amount >= (amount_crypto * 0.98): # Margen 2%
+                await event.respond(
+                    f"✅ **PAYMENT DETECTED!**\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 Amount: {amount} {symbol}\n"
+                    f"⏳ Confs: {confs}\n\n"
+                    f"🚀 Your product: {product.get('file_url', 'Check with Admin')}"
+                )
+            else:
+                await event.respond(f"❌ **Validation Failed:** {note}")
+
+    except asyncio.TimeoutError:
+        await event.respond("⏰ Order expired. If you paid, contact admin.")
