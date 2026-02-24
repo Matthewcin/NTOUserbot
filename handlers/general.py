@@ -35,8 +35,6 @@ async def handler_cmds(event):
         "🔹 <code>.status</code> » Server & Database health\n"
         "🔹 <code>.status check [svb/ob2]</code> » Deep debug\n"
         "🔹 <code>.request [text]</code> » Send message to Admin\n"
-        "🔹 <code>.urldebug [url]</code> » Test link formats\n"
-        "🔹 <code>.testbtn</code> » Test URL links"
     )
 
     full_msg = intro + store + licenses + system
