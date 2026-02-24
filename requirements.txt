@@ -4,3 +4,4 @@ asyncpg
 requests
 qrcode
 pillow
+python-dateutil
