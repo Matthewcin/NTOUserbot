@@ -9,6 +9,8 @@ import config
 from .crypto_utils import crypto_check
 from handlers.utils import can_run_command
 
+WAITING_FOR_TXID = {}
+
 async def reply_or_edit(event, text):
     if event.out:
         await event.edit(text, parse_mode='html')
@@ -120,50 +122,76 @@ async def handler_buy(event):
 
     if event.out:
         await event.delete()
-        await event.client.send_message(event.chat_id, order_msg, parse_mode='html')
+        sent_msg = await event.client.send_message(event.chat_id, order_msg, parse_mode='html')
     else:
-        await event.reply(order_msg, parse_mode='html')
+        sent_msg = await event.reply(order_msg, parse_mode='html')
 
-    try:
-        async with event.client.conversation(event.chat_id, timeout=600) as conv:
-            response = await conv.get_response()
-            txid = response.text.strip()
-            
-            await event.respond("🔍 **Verifying transaction on the blockchain...**")
-            
-            now = datetime.now(timezone.utc)
-            
-            success = False
-            amount = 0
-            confs = 0
-            note = ""
+    WAITING_FOR_TXID[event.chat_id] = {
+        'order_id': order_id,
+        'product_key': product_key,
+        'product_url': product.get('file_url', 'Contact the Admin to receive your product.'),
+        'symbol': symbol,
+        'amount_crypto': amount_crypto,
+        'address': wallet_data['address'],
+        'usd_price': usd_price,
+        'message_id': sent_msg.id,
+        'timestamp': datetime.now(timezone.utc)
+    }
 
-            if symbol == 'BTC':
-                success, amount, confs, note = crypto_check.check_btc(txid, wallet_data['address'], now)
-            elif symbol == 'LTC':
-                success, amount, confs, note = crypto_check.check_ltc(txid, wallet_data['address'], now)
-            else:
-                await event.respond("❌ Only BTC/LTC are supported for auto-verification right now.")
-                return
+async def handler_txid(event):
+    if event.chat_id not in WAITING_FOR_TXID:
+        return
+        
+    if not event.is_reply:
+        return
+        
+    reply_to = await event.get_reply_message()
+    if not reply_to:
+        return
+        
+    order_info = WAITING_FOR_TXID[event.chat_id]
+    
+    if reply_to.id != order_info['message_id']:
+        return
+        
+    order_info = WAITING_FOR_TXID.pop(event.chat_id)
+    txid = event.message.text.strip()
+    
+    await event.respond("🔍 **Verifying transaction on the blockchain...**")
+    
+    now = datetime.now(timezone.utc)
+    symbol = order_info['symbol']
+    amount_crypto = order_info['amount_crypto']
+    
+    success = False
+    amount = 0
+    confs = 0
+    note = ""
 
-            if success and amount >= (amount_crypto * 0.98):
-                await db.create_order(
-                    order_id, 
-                    txid, 
-                    event.chat_id, 
-                    product_key, 
-                    usd_price
-                )
+    if symbol == 'BTC':
+        success, amount, confs, note = crypto_check.check_btc(txid, order_info['address'], now)
+    elif symbol == 'LTC':
+        success, amount, confs, note = crypto_check.check_ltc(txid, order_info['address'], now)
+    else:
+        await event.respond("❌ Only BTC/LTC are supported for auto-verification right now.")
+        return
 
-                await event.respond(
-                    f"✅ **PAYMENT CONFIRMED!**\n"
-                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💰 Received: {amount} {symbol}\n"
-                    f"⏳ Confirmations: {confs}\n\n"
-                    f"🚀 Your product:\n{product.get('file_url', 'Contact the Admin to receive your product.')}"
-                )
-            else:
-                await event.respond(f"❌ **Validation Failed:** {note}")
+    if success and amount >= (amount_crypto * 0.98):
+        await db.create_order(
+            order_info['order_id'], 
+            txid, 
+            event.chat_id, 
+            order_info['product_key'], 
+            order_info['usd_price']
+        )
 
-    except asyncio.TimeoutError:
-        await event.respond("⏰ Order expired. If you already paid, contact the admin with your TXID.")
+        await event.respond(
+            f"✅ **PAYMENT CONFIRMED!**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 Received: {amount} {symbol}\n"
+            f"⏳ Confirmations: {confs}\n\n"
+            f"🚀 Your product:\n{order_info['product_url']}"
+        )
+    else:
+        WAITING_FOR_TXID[event.chat_id] = order_info
+        await event.respond(f"❌ **Validation Failed:** {note}\n\n_Make sure the TXID is correct and try replying again._")
