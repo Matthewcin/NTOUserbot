@@ -10,7 +10,7 @@ DB_URL = os.getenv('DB_URL')
 FREE_CRYPTO_API_TOKEN = "4hgzw1dnorurolqkpcg1"
 
 # ☁️ OpenBullet API
-OB_URL = "http://cloudfig6-001-site1.qtempurl.com/top"
+OB_URL = "http://cloudfig7-001-site1.rtempurl.com/top"
 OB_SECRET = "ZjBmYjQ2ZTdiMmRiZTdmYzAxNjY1Nzc1MjVkNGNlY2JjYmU3NWQwYjNiNGIzMWU0MTVlYTcxMWM5MmY3MWRkNmQzMzU1MjYzOGY4OWZjMjg2NzlhMjg1ZjZhMTEyOWZmMmJiZjYyMGM1Y2VhMjMwMDE3YzdmODJiNGJjM2RmN2Q="
 
 TARGET_GROUP = 'myConfigCloud'
