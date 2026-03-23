@@ -31,6 +31,8 @@ from .configs import (
     handler_editcfg
 )
 
+from .weekend import handler_weekend_autoresponder
+
 def register_all_handlers(client):
     client.add_event_handler(handler_welcome, events.ChatAction)
     client.add_event_handler(handler_hello, events.NewMessage(pattern=r'(?i)\.hello'))
@@ -83,3 +85,5 @@ def register_all_handlers(client):
     client.add_event_handler(handler_delcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.delcfg\s+(.*)'))
     client.add_event_handler(handler_cfgstatus, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgstatus\s+(.*)'))
     client.add_event_handler(handler_editcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.editcfg\s+(.*)'))
+
+    client.add_event_handler(handler_weekend_autoresponder, events.NewMessage(incoming=True))
