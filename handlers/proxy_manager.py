@@ -1,23 +1,25 @@
-from telethon import events, errors
+import json
+import os
+from telethon import events
 
-# ID de Tyras
+# ID de Tyras para restricción de acceso
 TYRAS_ID = 5632906275
-
-# Nota: Asumo que ya tienes una función load_proxies y save_proxies 
-# (puedes ponerlas aquí o importarlas)
 PROXIES_FILE = "proxies.json"
 
 def load_proxies():
-    import json
-    if not os.path.exists(PROXIES_FILE): return []
+    """Lee los proxies desde el archivo JSON."""
+    if not os.path.exists(PROXIES_FILE):
+        return []
     with open(PROXIES_FILE, "r") as f:
-        try: return json.load(f)
-        except: return []
+        try:
+            return json.load(f)
+        except:
+            return []
 
 def save_proxies(proxies):
-    import json
+    """Guarda los proxies en el archivo JSON."""
     with open(PROXIES_FILE, "w") as f:
-        json.dump(proxies, f)
+        json.dump(proxies, f, indent=4)
 
 async def handler_addproxy(event):
     if event.sender_id != TYRAS_ID:
@@ -26,11 +28,12 @@ async def handler_addproxy(event):
     await event.respond("✅ Send the list of proxy codes now (one per line):")
     
     try:
-        # Usamos conversation para esperar la respuesta en el mismo chat
+        # Iniciamos la conversación para esperar la respuesta
         async with event.client.conversation(event.sender_id) as conv:
             response = await conv.get_response(timeout=60)
             codes = [c.strip() for c in response.text.split('\n') if c.strip()]
             
+            # Cargamos, añadimos y guardamos
             proxies = load_proxies()
             proxies.extend(codes)
             save_proxies(proxies)
@@ -45,6 +48,7 @@ async def handler_giveproxy(event):
         return
     
     try:
+        # Obtenemos la cantidad del comando (ej: .giveproxy 4)
         args = event.pattern_match.group(1)
         count = int(args) if args else 1
         
@@ -53,11 +57,12 @@ async def handler_giveproxy(event):
             await event.respond(f"❌ Not enough proxies! Only {len(proxies)} available.")
             return
             
+        # Tomamos los necesarios y guardamos el resto
         given = proxies[:count]
         remaining = proxies[count:]
         save_proxies(remaining)
         
-        # Formato monoespaciado como pediste
+        # Formato de códigos monoespaciados
         code_str = "\n".join([f"`{c}`" for c in given])
         
         msg = (
