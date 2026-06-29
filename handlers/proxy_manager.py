@@ -20,23 +20,23 @@ async def handler_addproxy(event):
         return
         
     await event.respond("✅ Send the list of proxy codes now (one per line):")
-    
-    # Esta es la forma más segura de esperar la respuesta sin el error de "no message sent"
-    try:
-        response = await event.client.wait_event(
-            events.NewMessage(from_users=event.sender_id, incoming=True), 
-            timeout=60
-        )
-        
-        codes = [c.strip() for c in response.text.split('\n') if c.strip()]
-        proxies = load_proxies()
-        proxies.extend(codes)
-        save_proxies(proxies)
-        
-        await event.respond(f"📦 Successfully added {len(codes)} codes! Total in stock: {len(proxies)}")
-        await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", parse_mode='html')
-    except Exception as e:
-        await event.respond(f"❌ Error adding proxies: {e}")
+
+    # Definimos una función interna para capturar la respuesta
+    async def capture_proxies(response):
+        if response.sender_id == event.sender_id:
+            codes = [c.strip() for c in response.text.split('\n') if c.strip()]
+            proxies = load_proxies()
+            proxies.extend(codes)
+            save_proxies(proxies)
+            
+            await response.respond(f"📦 Successfully added {len(codes)} codes! Total in stock: {len(proxies)}")
+            await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes added.", parse_mode='html')
+            
+            # Removemos el handler después de capturar
+            event.client.remove_event_handler(capture_proxies)
+
+    # Registramos el handler temporal
+    event.client.add_event_handler(capture_proxies, events.NewMessage(from_users=event.sender_id))
 
 async def handler_giveproxy(event):
     if event.sender_id not in AUTHORIZED_IDS:
