@@ -33,7 +33,7 @@ from .configs import (
 
 from .weekend import handler_weekend_autoresponder
 from .partners import handler_bought
-from .proxy_manager import handler_addproxy, handler_giveproxy
+from handlers.proxy_manager import handler_addproxy, handler_giveproxy
 
 def register_all_handlers(client):
     client.add_event_handler(handler_welcome, events.ChatAction)
@@ -92,5 +92,5 @@ def register_all_handlers(client):
     
     client.add_event_handler(handler_bought, events.NewMessage(outgoing=True, pattern=r'(?i)\.bought\s+([^\s]+)\s+(.+)'))
 
-    client.add_event_handler(handler_addproxy, events.NewMessage(outgoing=True, pattern=r'\.addproxy'))
-    client.add_event_handler(handler_giveproxy, events.NewMessage(outgoing=True, pattern=r'\.giveproxy\s+(.*)'))
+    client.add_event_handler(handler_addproxy, events.NewMessage(pattern=r'\.addproxy'))
+    client.add_event_handler(handler_giveproxy, events.NewMessage(pattern=r'\.giveproxy\s+(.*)'))
