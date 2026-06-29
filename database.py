@@ -19,7 +19,6 @@ class Database:
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
-            # Tablas Base (Productos, Ordenes, Settings, Licencias, Wallets, Requests)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id SERIAL PRIMARY KEY,
@@ -57,7 +56,7 @@ class Database:
             """)
             try: await conn.execute("ALTER TABLE licenses ADD COLUMN IF NOT EXISTS last_ip_change TIMESTAMP;")
             except: pass
-            
+
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS wallets (
                     symbol TEXT PRIMARY KEY,
@@ -76,7 +75,6 @@ class Database:
                 );
             """)
 
-            # 🆕 NUEVA TABLA: CONFIGS
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS configs (
                     id SERIAL PRIMARY KEY,
@@ -89,12 +87,18 @@ class Database:
                 );
             """)
             
-            # 🆕 POBLAR LISTA INICIAL SI ESTÁ VACÍA
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS proxies (
+                    id SERIAL PRIMARY KEY,
+                    code TEXT UNIQUE NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
             count = await conn.fetchval("SELECT COUNT(*) FROM configs")
             if count == 0:
                 print("⚙️ Insertando lista inicial de Configs...")
                 initial_data = [
-                    # STREAMING
                     ('STREAMING', 'AMCTheatres', ''), ('STREAMING', 'Allente', ''), ('STREAMING', 'Bally Sports', ''),
                     ('STREAMING', 'Britbox', ''), ('STREAMING', 'Crunchyroll', ''), ('STREAMING', 'Curiosity Stream', ''),
                     ('STREAMING', 'Dazn (Ask me for TLS!)', ''), ('STREAMING', 'DirecTV Stream + DirecTV AT&T', ''),
@@ -108,11 +112,9 @@ class Database:
                     ('STREAMING', 'UFC', ''), ('STREAMING', 'VSiN Sports', ''), ('STREAMING', 'Viki Rakuten', ''),
                     ('STREAMING', 'WWE-Network', ''),
 
-                    # GAMING
                     ('GAMING', 'ABYA (GeForceNOW)', ''), ('GAMING', 'GeoGuessr', ''), ('GAMING', 'Steam', ''),
                     ('GAMING', 'Ubisoft Connect', ''), ('GAMING', 'XBOX+Outlook', ''),
 
-                    # EDUCATION
                     ('EDUCATION', 'BentBox', ''), ('EDUCATION', 'Codecademy', ''), ('EDUCATION', 'Chegg', ''),
                     ('EDUCATION', 'Chordify', ''), ('EDUCATION', 'Crehana', ''), ('EDUCATION', 'Domestika', ''),
                     ('EDUCATION', 'Front-End Masters', ''), ('EDUCATION', 'GetAbstract', ''), ('EDUCATION', 'Magoosh', ''),
@@ -122,29 +124,24 @@ class Database:
                     ('EDUCATION', 'Symbolab', ''), ('EDUCATION', 'Transtutors', ''), ('EDUCATION', 'Ultimate Guitar', ''),
                     ('EDUCATION', 'Yousician', ''),
 
-                    # ADULT
                     ('ADULT', 'Flingster', ''), ('ADULT', 'Nubiles Porn', ''), ('ADULT', 'Pornhub', ''),
                     ('ADULT', 'VR Porn', ''), ('ADULT', 'XVideos', ''),
 
-                    # FOOD
                     ('FOOD', '&Pizza', ''), ('FOOD', 'Chopt', ''), ('FOOD', 'Dasher Direct', ''),
                     ('FOOD', 'Del Taco', ''), ('FOOD', 'Dominos CA', ''), ('FOOD', 'FoodHub', ''),
                     ('FOOD', 'MakeItCount', ''), ('FOOD', 'Maverik Rewards', ''), ('FOOD', 'PedidosYa', ''),
                     ('FOOD', 'PizzaHut USA', ''), ('FOOD', 'Safeway', ''), ('FOOD', 'ShakeShack', ''),
                     ('FOOD', 'Shipt', ''), ('FOOD', 'Wingstop', ''),
 
-                    # VPN
                     ('VPN', 'CactusVPN', ''), ('VPN', 'DotVPN', ''), ('VPN', 'IPVanish', ''),
                     ('VPN', 'Malwarebytes', ''), ('VPN', 'Mullvad VPN', ''), ('VPN', 'TunnelBear', ''),
                     ('VPN', 'VyprVPN', ''), ('VPN', 'Windscribe (App Version Error)', ''),
 
-                    # SHOP
                     ('SHOP', "Arc'teryx", ''), ('SHOP', 'Engelhorn.de', ''), ('SHOP', 'Farfetch', ''),
                     ('SHOP', 'Fashion Nova', ''), ('SHOP', 'FashionDays', ''), ('SHOP', 'Fitbit', ''),
                     ('SHOP', 'Guitar Center', ''), ('SHOP', 'PlayOn', ''), ('SHOP', 'RackRoom Shoes', ''),
                     ('SHOP', 'SSense', ''), ('SHOP', 'Tanguay', ''),
 
-                    # UNSORTED
                     ('UNSORTED', 'AhRefs', ''), ('UNSORTED', 'BetterMe', ''), ('UNSORTED', 'Calm', ''),
                     ('UNSORTED', 'Codefinity', ''), ('UNSORTED', 'Coohom', ''), ('UNSORTED', 'Evernote', ''),
                     ('UNSORTED', 'FakeYou', ''), ('UNSORTED', 'Figma', ''), ('UNSORTED', 'Headspace', ''),
@@ -157,7 +154,6 @@ class Database:
                     ('UNSORTED', 'Viki K-Drama', ''), ('UNSORTED', 'Windstream', ''), ('UNSORTED', 'YCharts', ''),
                     ('UNSORTED', 'eHarmony Dating', ''),
 
-                    # PRIVATE
                     ('PRIVATE', 'Roblox (TLS)', '$200 USD'), ('PRIVATE', 'American Airlines', '$250 USD'),
                     ('PRIVATE', 'Hollister & Co', '$60 USD'), ('PRIVATE', 'StripChat (CapSolver)', '$100 USD'),
                     ('PRIVATE', 'REWE (Only Login / Capsolver)', '$25 USD'), ('PRIVATE', 'Degoo Storage Cloud', '$250 USD'),
@@ -169,7 +165,6 @@ class Database:
                     initial_data
                 )
 
-    # --- MÉTODOS PRODUCTOS ---
     async def get_product(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -209,7 +204,6 @@ class Database:
             res = await conn.execute("DELETE FROM products WHERE key_name = $1", key)
             return res != "DELETE 0"
 
-    # --- MÉTODOS SETTINGS ---
     async def get_setting(self, key):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -225,7 +219,6 @@ class Database:
             """, key, value)
             return True
 
-    # --- MÉTODOS LICENCIAS ---
     async def get_license(self, user_id):
         if not self.pool: return None
         async with self.pool.acquire() as conn:
@@ -255,11 +248,11 @@ class Database:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT last_ip_change FROM licenses WHERE user_id = $1", user_id)
             if not row or not row['last_ip_change']: return True
-            
+
             last_ts = row['last_ip_change'].timestamp()
             diff = time.time() - last_ts
             seven_days = 7 * 24 * 60 * 60
-            
+
             if diff >= seven_days: return True
             remaining = seven_days - diff
             days = int(remaining // 86400)
@@ -280,7 +273,6 @@ class Database:
             elif len(rows) == 1: return rows[0]['api_key']
             else: return "AMBIGUOUS"
 
-    # --- MÉTODOS WALLETS (CRYPTO) ---
     async def set_wallet(self, symbol, address, network):
         if not self.pool: return False
         async with self.pool.acquire() as conn:
@@ -306,7 +298,6 @@ class Database:
             res = await conn.execute("DELETE FROM wallets WHERE symbol = $1", symbol.upper())
             return res != "DELETE 0"
 
-    # --- MÉTODOS REQUEST/QUEUE (SISTEMA DE TICKETS) ---
     async def add_request(self, user_id, username, service):
         if not self.pool: return False, 0
         async with self.pool.acquire() as conn:
@@ -361,7 +352,6 @@ class Database:
             res = await conn.execute("DELETE FROM requests WHERE id = $1", request_id)
             return res != "DELETE 0"
 
-    # 🆕 MÉTODOS CONFIGS MANAGEMENT
     async def get_all_configs(self):
         if not self.pool: return []
         async with self.pool.acquire() as conn:
@@ -404,5 +394,37 @@ class Database:
                 new_price, category.upper(), name
             )
             return res != "UPDATE 0"
+
+    async def add_proxies(self, codes):
+        if not self.pool: return False
+        try:
+            tuples = [(c,) for c in codes]
+            async with self.pool.acquire() as conn:
+                await conn.executemany(
+                    "INSERT INTO proxies (code) VALUES ($1) ON CONFLICT DO NOTHING",
+                    tuples
+                )
+            return True
+        except:
+            return False
+
+    async def get_proxies_count(self):
+        if not self.pool: return 0
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT COUNT(*) FROM proxies")
+
+    async def get_and_remove_proxies(self, count):
+        if not self.pool: return []
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                DELETE FROM proxies 
+                WHERE id IN (
+                    SELECT id FROM proxies 
+                    ORDER BY id ASC 
+                    LIMIT $1
+                ) 
+                RETURNING code;
+            """, count)
+            return [row['code'] for row in rows]
 
 db = Database()
