@@ -2,18 +2,14 @@ import json
 import os
 from telethon import events
 
-# Lista de IDs autorizados
 AUTHORIZED_IDS = [5632906275, 934491540]
 PROXIES_FILE = "proxies.json"
 
 def load_proxies():
-    if not os.path.exists(PROXIES_FILE):
-        return []
+    if not os.path.exists(PROXIES_FILE): return []
     with open(PROXIES_FILE, "r") as f:
-        try:
-            return json.load(f)
-        except:
-            return []
+        try: return json.load(f)
+        except: return []
 
 def save_proxies(proxies):
     with open(PROXIES_FILE, "w") as f:
@@ -25,17 +21,20 @@ async def handler_addproxy(event):
         
     await event.respond("✅ Send the list of proxy codes now (one per line):")
     
+    # Esta es la forma más segura de esperar la respuesta sin el error de "no message sent"
     try:
-        async with event.client.conversation(event.sender_id) as conv:
-            response = await conv.get_response(timeout=60)
-            codes = [c.strip() for c in response.text.split('\n') if c.strip()]
-            
-            proxies = load_proxies()
-            proxies.extend(codes)
-            save_proxies(proxies)
-            
-            await event.respond(f"📦 Successfully added {len(codes)} codes! Total in stock: {len(proxies)}")
-            await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", parse_mode='html')
+        response = await event.client.wait_event(
+            events.NewMessage(from_users=event.sender_id, incoming=True), 
+            timeout=60
+        )
+        
+        codes = [c.strip() for c in response.text.split('\n') if c.strip()]
+        proxies = load_proxies()
+        proxies.extend(codes)
+        save_proxies(proxies)
+        
+        await event.respond(f"📦 Successfully added {len(codes)} codes! Total in stock: {len(proxies)}")
+        await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", parse_mode='html')
     except Exception as e:
         await event.respond(f"❌ Error adding proxies: {e}")
 
