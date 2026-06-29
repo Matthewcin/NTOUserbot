@@ -21,9 +21,7 @@ async def handler_addproxy(event):
         
     await event.respond("✅ Send the list of proxy codes now (one per line):")
 
-    # Definimos el manejador temporal
     async def capture_proxies(response):
-        # Aseguramos que sea el mismo usuario y no sea el mismo comando
         if response.sender_id == event.sender_id and response.id != event.id:
             codes = [c.strip() for c in response.text.split('\n') if c.strip()]
             
@@ -33,9 +31,8 @@ async def handler_addproxy(event):
             
             await response.respond(f"📦 Successfully added {len(codes)} codes! Total in stock: {len(proxies)}")
             
-            # Notificar al grupo, usando el nombre de usuario correcto
             try:
-                await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", parse_mode='html')
+                await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", reply_to=3832, link_preview=False, parse_mode='html')
             except Exception as e:
                 await event.respond(f"⚠️ Added but failed to notify group: {e}")
             
