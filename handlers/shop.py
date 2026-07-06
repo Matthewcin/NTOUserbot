@@ -78,22 +78,28 @@ async def handler_buy(event):
 
 async def handler_txid(event):
     if event.chat_id not in WAITING_FOR_TXID: return
+    
     reply_to = await event.get_reply_message()
     if not reply_to: return
     
     order_info = WAITING_FOR_TXID[event.chat_id]
     if reply_to.id != order_info['message_id']: return
     
-    order_info = WAITING_FOR_TXID.pop(event.chat_id)
     txid = event.message.text.strip()
     
-    msg = await event.respond("🔍 <b>Verifying transaction...</b>", parse_mode='html')
+    # NUEVA VALIDACIÓN: ¿Ya se usó este TXID?
+    if await db.is_txid_used(txid):
+        await event.respond("❌ <b>Error:</b> This TXID has already been used to claim an order.", parse_mode='html')
+        return
+
+    msg = await event.respond("🔍 <b>Verifying transaction on Binance...</b>", parse_mode='html')
     
     success, status_msg = verify_payment(txid, order_info['amount_crypto'], order_info['symbol'])
 
     if success:
+        # Aquí guardamos en la DB y marcamos como usado
         await db.create_order(order_info['order_id'], txid, event.chat_id, order_info['product_key'], order_info['usd_price'])
         await msg.edit(f"✅ <b>PAYMENT CONFIRMED!</b>\n\n🚀 Your product:\n{order_info['product_url']}", parse_mode='html')
+        WAITING_FOR_TXID.pop(event.chat_id)
     else:
-        WAITING_FOR_TXID[event.chat_id] = order_info
         await msg.edit(f"❌ <b>Validation Failed:</b> {status_msg}.", parse_mode='html')
