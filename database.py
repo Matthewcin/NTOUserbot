@@ -428,14 +428,21 @@ class Database:
             """, count)
             return [row['code'] for row in rows]
         
+    async def get_wallet_by_network(self, symbol, network):
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT * FROM wallets WHERE symbol = $1 AND network = $2", 
+                symbol.upper(), network.upper()
+            )
+
     async def log_order(self, order_id, tx_id, user_id, product_key, amount_usd, symbol, status):
         if not self.pool: return
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO orders (order_id, tx_id, user_id, product_key, amount_usd, symbol, status)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT (order_id) DO UPDATE SET status = $7, tx_id = $2
-            """, order_id, tx_id, user_id, product_key, amount_usd, symbol, status)
+            """, order_id, str(tx_id), user_id, product_key, amount_usd, symbol, status)
 
     async def is_txid_used(self, tx_id):
         if not self.pool: return True # Si no hay DB, bloqueamos por seguridad
