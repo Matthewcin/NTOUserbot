@@ -9,6 +9,13 @@ BINANCE_SECRET_KEY = "jyZTLpFyDQ8XiVnUEUjVqzPq4w2kZno85Sa9rtrVoXNXNIf3n03HmLlrad
 BASE_URL = "https://api.binance.com"
 TEST_MODE = True
 
+def get_server_time():
+    try:
+        response = requests.get(f"{BASE_URL}/api/v3/time")
+        return response.json()['serverTime']
+    except:
+        return int(time.time() * 1000)
+
 def ping_binance():
     try:
         response = requests.get(f"{BASE_URL}/api/v3/ping")
@@ -23,13 +30,12 @@ def get_coin_price(symbol="LTCUSDT"):
         response.raise_for_status()
         data = response.json()
         return float(data["price"])
-    except Exception as e:
-        print(f"Error fetching price: {e}")
+    except:
         return 0.0
 
 def get_deposit_address(coin, network=None):
     endpoint = "/sapi/v1/capital/deposit/address"
-    timestamp = int(time.time() * 1000)
+    timestamp = get_server_time()
     
     params = {
         "coin": coin.upper(),
@@ -59,42 +65,12 @@ def get_deposit_address(coin, network=None):
             return None, None
         data = response.json()
         return data.get("address"), data.get("tag", "")
-    except Exception as e:
-        print(f"Error in get_deposit_address: {e}")
-        return None, None
-
-def get_deposit_address_list(coin):
-    endpoint = "/sapi/v1/capital/deposit/address/list"
-    timestamp = int(time.time() * 1000)
-    
-    params = {
-        "coin": coin.upper(),
-        "timestamp": timestamp,
-        "recvWindow": 60000
-    }
-    
-    query_string = urlencode(params)
-    signature = hmac.new(
-        BINANCE_SECRET_KEY.encode("utf-8"),
-        query_string.encode("utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    
-    params["signature"] = signature
-    headers = {
-        "X-MBX-APIKEY": BINANCE_API_KEY
-    }
-    
-    try:
-        response = requests.get(BASE_URL + endpoint, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json()
     except:
-        return []
+        return None, None
 
 def get_binance_deposits(coin="USDT", limit=10):
     endpoint = "/sapi/v1/capital/deposit/hisrec"
-    timestamp = int(time.time() * 1000)
+    timestamp = get_server_time()
     
     params = {
         "coin": coin,
