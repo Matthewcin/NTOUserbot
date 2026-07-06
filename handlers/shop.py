@@ -131,16 +131,37 @@ async def handler_txid(event):
     order_info = WAITING_FOR_TXID[event.chat_id]
     if reply_to.id != order_info['message_id']: return
     
-    order_info = WAITING_FOR_TXID.pop(event.chat_id)
     txid = event.message.text.strip()
     
+    # NUEVA VALIDACIÓN ANTI-REUTILIZACIÓN
+    if await db.is_txid_used(txid):
+        await event.respond("❌ <b>Error:</b> This TXID has already been used.", parse_mode='html')
+        return
+
     msg = await event.respond("🔍 <b>Verifying transaction...</b>", parse_mode='html')
     
-    success, status_msg = verify_payment(txid, order_info['amount_crypto'], order_info['symbol'])
+    # Recibimos el monto real encontrado en la API
+    success, status_msg, received_amount = verify_payment(txid, order_info['amount_crypto'], order_info['symbol'])
 
     if success:
         await db.create_order(order_info['order_id'], txid, event.chat_id, order_info['product_key'], order_info['usd_price'])
         await msg.edit(f"✅ <b>PAYMENT CONFIRMED!</b>\n\n🚀 Your product:\n{order_info['product_url']}", parse_mode='html')
+        WAITING_FOR_TXID.pop(event.chat_id)
     else:
-        WAITING_FOR_TXID[event.chat_id] = order_info
-        await msg.edit(f"❌ <b>Validation Failed:</b> {status_msg}.", parse_mode='html')
+        # Lógica de mensaje dinámico
+        diff = order_info['amount_crypto'] - received_amount
+        status_text = f"❌ <b>Validation Failed:</b> {status_msg}"
+        
+        # Si es monto insuficiente, detallamos
+        if status_msg == "INSUFFICIENT_AMOUNT":
+            status_text += f"\n\n💰 <b>Required:</b> {order_info['amount_crypto']} {order_info['symbol']}\n"
+            status_text += f"📉 <b>Received:</b> {received_amount} {order_info['symbol']}\n"
+            status_text += f"⚠️ <b>Missing:</b> {round(diff, 8)} {order_info['symbol']}"
+
+        # Información extra
+        status_text += (
+            f"\n\n🆔 <b>TXID:</b> <code>{txid}</code>\n"
+            f"🔗 <a href='https://www.blockchain.com/explorer/search?search={txid}'><b>[ CHECK ON BLOCKCHAIN ]</b></a>"
+        )
+        
+        await msg.edit(status_text, parse_mode='html')

@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 BINANCE_API_KEY = "TojHj1UOmgb5un1DIOyT0zI3mfESxe7Mgthnn2jlJ4qQy6pUL1gSTBAa5ti6DL2v"
 BINANCE_SECRET_KEY = "jyZTLpFyDQ8XiVnUEUjVqzPq4w2kZno85Sa9rtrVoXNXNIf3n03HmLlradhanjOq"
 BASE_URL = "https://api.binance.com"
-TEST_MODE = True
+TEST_MODE = False
 
 def get_server_time():
     try:
@@ -57,14 +57,18 @@ def get_binance_deposits(coin="USDT", limit=10):
 
 def verify_payment(txid, expected_amount, coin="USDT"):
     if TEST_MODE and txid.startswith("TEST"):
-        return True, "CONFIRMED"
+        return True, "CONFIRMED", expected_amount
 
     deposits = get_binance_deposits(coin=coin, limit=50)
     for deposit in deposits:
         if deposit.get("txId") == txid:
             status = deposit.get("status")
             amount = float(deposit.get("amount", 0))
-            if status != 1: return False, "PENDING"
-            if amount < expected_amount: return False, "INSUFFICIENT_AMOUNT"
-            return True, "CONFIRMED"
-    return False, "NOT_FOUND"
+            
+            # Devolvemos: (Éxito, Motivo, MontoRecibido)
+            if status != 1: return False, "PENDING", amount
+            if amount < (expected_amount * 0.98): # Margen de error del 2%
+                return False, "INSUFFICIENT_AMOUNT", amount
+            return True, "CONFIRMED", amount
+            
+    return False, "NOT_FOUND", 0.0
