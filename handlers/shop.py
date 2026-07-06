@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from telethon import events
 from database import db
 import config
-from .crypto_utils import crypto_check
 from handlers.utils import can_run_command
+from binance_api import get_coin_price, get_deposit_address, verify_payment
 
 WAITING_FOR_TXID = {}
 
@@ -93,21 +93,36 @@ async def handler_buy(event):
         await reply_or_edit(event, f"❌ Product `{product_key}` not found.")
         return
 
-    wallet_data = await db.get_wallet(symbol)
-    if not wallet_data:
-        await reply_or_edit(event, f"❌ Wallet for {symbol} not configured.")
+    if symbol == "USDT":
+        crypto_price = 1.0
+    else:
+        crypto_price = get_coin_price(f"{symbol}USDT")
+
+    if crypto_price <= 0:
+        await reply_or_edit(event, f"❌ Error fetching price for {symbol}.")
         return
+
+    address, tag = get_deposit_address(symbol)
+    if not address:
+        wallet_data = await db.get_wallet(symbol)
+        if not wallet_data:
+            await reply_or_edit(event, f"❌ Wallet for {symbol} not found on Binance or DB.")
+            return
+        address = wallet_data['address']
+        network = wallet_data['network']
+    else:
+        network = "Binance"
 
     usd_price_base = float(product['price_usd'])
     random_cents = round(random.uniform(0.01, 0.15), 2)
     usd_price = round(usd_price_base + random_cents, 2)
     
-    crypto_price = crypto_check.get_crypto_price(symbol)
     amount_crypto = round(usd_price / crypto_price, 8)
-    
     order_id = str(uuid.uuid4())[:8]
 
-    explorer_url = "https://mempool.space" if symbol == 'BTC' else "https://blockchair.com/litecoin"
+    address_str = f"<code>{address}</code>"
+    if tag:
+        address_str += f"\n🏷 <b>Tag/Memo:</b> <code>{tag}</code>"
 
     order_msg = (
         f"💳 <b>PAYMENT INSTRUCTIONS</b>\n"
@@ -115,8 +130,7 @@ async def handler_buy(event):
         f"📦 <b>Item:</b> {product['display_name']}\n"
         f"💵 <b>Total:</b> ${usd_price} USD\n"
         f"💰 <b>Send EXACTLY:</b> <code>{amount_crypto}</code> {symbol}\n\n"
-        f"📍 <b>Address ({wallet_data['network']}):</b>\n<code>{wallet_data['address']}</code>\n\n"
-        f"🔍 <a href='{explorer_url}'><b>[ OPEN EXPLORER ]</b></a>\n\n"
+        f"📍 <b>Address ({network}):</b>\n{address_str}\n\n"
         f"⚠️ <b>Reply to this message ONLY with the TXID (Hash).</b>"
     )
 
@@ -132,7 +146,7 @@ async def handler_buy(event):
         'product_url': product.get('file_url', 'Contact the Admin to receive your product.'),
         'symbol': symbol,
         'amount_crypto': amount_crypto,
-        'address': wallet_data['address'],
+        'address': address,
         'usd_price': usd_price,
         'message_id': sent_msg.id,
         'timestamp': datetime.now(timezone.utc)
@@ -157,26 +171,14 @@ async def handler_txid(event):
     order_info = WAITING_FOR_TXID.pop(event.chat_id)
     txid = event.message.text.strip()
     
-    await event.respond("🔍 **Verifying transaction on the blockchain...**")
+    await event.respond("🔍 **Verifying transaction on Binance...**")
     
-    now = datetime.now(timezone.utc)
     symbol = order_info['symbol']
     amount_crypto = order_info['amount_crypto']
     
-    success = False
-    amount = 0
-    confs = 0
-    note = ""
+    success, status_msg = verify_payment(txid, amount_crypto, symbol)
 
-    if symbol == 'BTC':
-        success, amount, confs, note = crypto_check.check_btc(txid, order_info['address'], now)
-    elif symbol == 'LTC':
-        success, amount, confs, note = crypto_check.check_ltc(txid, order_info['address'], now)
-    else:
-        await event.respond("❌ Only BTC/LTC are supported for auto-verification right now.")
-        return
-
-    if success and amount >= (amount_crypto * 0.98):
+    if success:
         await db.create_order(
             order_info['order_id'], 
             txid, 
@@ -188,10 +190,15 @@ async def handler_txid(event):
         await event.respond(
             f"✅ **PAYMENT CONFIRMED!**\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 Received: {amount} {symbol}\n"
-            f"⏳ Confirmations: {confs}\n\n"
+            f"💰 Verified via Binance API\n\n"
             f"🚀 Your product:\n{order_info['product_url']}"
         )
     else:
         WAITING_FOR_TXID[event.chat_id] = order_info
-        await event.respond(f"❌ **Validation Failed:** {note}\n\n_Make sure the TXID is correct and try replying again._")
+        
+        reason = status_msg
+        if status_msg == "NOT_FOUND": reason = "Not found on Binance yet"
+        elif status_msg == "PENDING": reason = "Pending Network Confirmations"
+        elif status_msg == "INSUFFICIENT_AMOUNT": reason = "Insufficient amount sent"
+        
+        await event.respond(f"❌ **Validation Failed:** {reason}\n\n_Make sure the TXID is correct, or wait a minute and reply again._")
