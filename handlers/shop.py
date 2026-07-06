@@ -45,7 +45,6 @@ async def handler_list(event):
         
     except Exception as e:
         await reply_or_edit(event, f"❌ Error listing products: {e}")
-        traceback.print_exc()
 
 async def handler_info(event):
     if not await can_run_command(event): return
@@ -86,7 +85,17 @@ async def handler_buy(event):
         return
     
     product_key = args[1].lower()
-    symbol = args[2].upper()
+    raw_symbol = args[2].upper()
+    
+    alias_map = {
+        "LITECOIN": "LTC",
+        "BITCOIN": "BTC",
+        "ETHEREUM": "ETH",
+        "TRON": "TRX",
+        "TETHER": "USDT",
+        "BINANCECOIN": "BNB"
+    }
+    symbol = alias_map.get(raw_symbol, raw_symbol)
     
     product = await db.get_product(product_key)
     if not product:
@@ -99,7 +108,7 @@ async def handler_buy(event):
         crypto_price = get_coin_price(f"{symbol}USDT")
 
     if crypto_price <= 0:
-        await reply_or_edit(event, f"❌ Error fetching price for {symbol}.")
+        await reply_or_edit(event, f"❌ Error fetching price for {symbol} on Binance.")
         return
 
     address, tag = get_deposit_address(symbol)
@@ -166,10 +175,10 @@ async def handler_txid(event):
     order_info = WAITING_FOR_TXID[event.chat_id]
     
     if reply_to.id != order_info['message_id']:
-        print(f"⚠️ [DEBUG] TXID Ignorado: Respondiste al mensaje {reply_to.id}, pero yo esperaba el {order_info['message_id']}.")
+        print(f"⚠️ [DEBUG] TXID Ignored: Message ID {reply_to.id} does not match {order_info['message_id']}")
         return
         
-    print("✅ [DEBUG] Hash recibido y emparejado con el mensaje correcto. Procesando...")
+    print("✅ [DEBUG] Hash received. Processing with Binance API...")
     order_info = WAITING_FOR_TXID.pop(event.chat_id)
     txid = event.message.text.strip()
     
