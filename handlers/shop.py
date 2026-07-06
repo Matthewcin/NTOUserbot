@@ -10,62 +10,75 @@ from binance_api import get_coin_price, get_deposit_address, verify_payment
 
 WAITING_FOR_TXID = {}
 
+# --- LISTAR PRODUCTOS (Soluciona tu error de import) ---
+async def handler_list(event):
+    if not await can_run_command(event): return
+    try:
+        if not db.pool: await event.reply("❌ DB Disconnected."); return
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
+        if not rows: await event.reply("📂 <b>CATALOGO VACÍO</b>", parse_mode='html'); return
+        
+        msg = "🛒 <b>PRODUCTOS DISPONIBLES</b>\n\n"
+        for row in rows:
+            msg += f"🔹 <b>{row['display_name']}</b> | Key: <code>{row['key_name']}</code> | Price: ${row['price_usd']}\n"
+        await event.reply(msg, parse_mode='html')
+    except Exception as e:
+        await event.reply(f"❌ Error: {e}")
+
+# --- LISTAR BILLETERAS FAMOSAS/DISPONIBLES ---
+async def handler_wallets(event):
+    if not await can_run_command(event): return
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch("SELECT symbol, network, address FROM wallets")
+    if not rows: await event.reply("❌ No wallets configured."); return
+    msg = "🌐 <b>FAMOUS WALLETS / NETWORKS</b>\n\n"
+    for r in rows:
+        msg += f"💰 <b>{r['symbol']}</b> ({r['network']})\n<code>{r['address']}</code>\n\n"
+    await event.reply(msg, parse_mode='html')
+
 async def handler_buy(event):
     if not await can_run_command(event): return
-    args = event.message.text.split()
     
-    # Soporte: .buy [key] [SYMBOL] [NETWORK]
+    # 1. Bloqueo de orden simultánea
+    if event.chat_id in WAITING_FOR_TXID:
+        await event.reply("❌ <b>Ya tienes una orden activa.</b>\nResponde al mensaje de pago con <code>CANCEL</code> para cancelar la anterior y crear una nueva.", parse_mode='html')
+        return
+
+    args = event.message.text.split()
     if len(args) < 3:
-        await event.reply("❌ <b>Usage:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>\nEx: <code>.buy disney USDT TRC20</code>", parse_mode='html')
+        await event.reply("❌ <b>Uso:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>", parse_mode='html')
         return
     
-    product_key = args[1].lower()
-    symbol = args[2].upper()
-    network = args[3].upper() if len(args) > 3 else None
+    product_key, symbol, network = args[1].lower(), args[2].upper(), (args[3].upper() if len(args) > 3 else None)
     
     product = await db.get_product(product_key)
-    if not product:
-        await event.reply(f"❌ Product <code>{product_key}</code> not found.", parse_mode='html')
-        return
+    if not product: await event.reply(f"❌ Product <code>{product_key}</code> not found."); return
 
-    # 1. Obtener dirección
     address, tag = get_deposit_address(symbol, network=network)
-    
-    # Si Binance no la da, buscamos en DB local
     if not address:
         wallet = await db.get_wallet_by_network(symbol, network) if network else await db.get_wallet(symbol)
-        if not wallet:
-            await event.reply(f"❌ No wallet found for <b>{symbol}</b> {f'({network})' if network else ''}", parse_mode='html')
-            return
+        if not wallet: await event.reply(f"❌ No wallet config for {symbol}"); return
         address, tag = wallet['address'], ""
-        network = wallet['network'] # Usamos la red de la DB
+        network = wallet['network']
 
-    # 2. Calcular precio
     crypto_price = 1.0 if symbol in ['USDT', 'USDC'] else get_coin_price(f"{symbol}USDT")
     usd_price = round(float(product['price_usd']) + round(random.uniform(0.01, 0.15), 2), 2)
     amount_crypto = round(usd_price / crypto_price, 8)
     
-    # 3. Generar QR
     qr = qrcode.make(address)
     bio = io.BytesIO(); bio.name = 'qr.png'; qr.save(bio, 'PNG'); bio.seek(0)
     
-    # 4. Mensaje claro con la RED
     order_msg = (f"💳 <b>PAYMENT INSTRUCTIONS</b>\n"
                  f"📦 <b>Item:</b> {product['display_name']}\n"
-                 f"💵 <b>Total:</b> ${usd_price} USD\n"
-                 f"💰 <b>Send:</b> <code>{amount_crypto}</code> {symbol}\n"
-                 f"🌐 <b>Network:</b> <code>{network or 'Mainnet'}</code>\n\n"
-                 f"📍 <b>Address:</b> <code>{address}</code>"
-                 + (f"\n🏷 <b>Tag:</b> <code>{tag}</code>" if tag else "") +
-                 f"\n\n⚠️ <b>Reply to this message ONLY with your TXID.</b>")
+                 f"💰 <b>Send:</b> <code>{amount_crypto}</code> {symbol} via {network or 'Mainnet'}\n"
+                 f"📍 <b>Address:</b> <code>{address}</code>\n"
+                 f"⚠️ <b>Reply with TXID or CANCEL.</b>")
 
     sent_msg = await event.client.send_file(event.chat_id, bio, caption=order_msg, parse_mode='html')
-
     WAITING_FOR_TXID[event.chat_id] = {
-        'order_id': str(uuid.uuid4())[:8], 'product_key': product_key,
-        'product_url': product.get('file_url', 'Admin contact needed'),
-        'symbol': symbol, 'amount_crypto': amount_crypto, 'usd_price': usd_price,
-        'message_id': sent_msg.id
+        'order_id': str(uuid.uuid4())[:8], 'product_key': product_key, 'product_url': product.get('file_url'),
+        'symbol': symbol, 'amount_crypto': amount_crypto, 'usd_price': usd_price, 'message_id': sent_msg.id
     }
 
 async def handler_txid(event):
@@ -76,23 +89,25 @@ async def handler_txid(event):
     order_info = WAITING_FOR_TXID[event.chat_id]
     if reply_to.id != order_info['message_id']: return
     
-    txid = event.message.text.strip()
+    text = event.message.text.strip()
     
-    # Anti-fraude
-    if await db.is_txid_used(txid):
-        await event.respond("❌ <b>Error:</b> This TXID is already used.", parse_mode='html')
+    # Lógica de Cancelación
+    if text.upper() == "CANCEL":
+        WAITING_FOR_TXID.pop(event.chat_id)
+        await event.reply("✅ Orden cancelada con éxito.")
         return
+    
+    # Verificación normal
+    if await db.is_txid_used(text):
+        await event.reply("❌ Este TXID ya fue usado."); return
 
-    msg = await event.respond("🔍 <b>Verifying transaction...</b>", parse_mode='html')
-    success, status_msg, received = verify_payment(txid, order_info['amount_crypto'], order_info['symbol'])
+    msg = await event.respond("🔍 <b>Verificando...</b>", parse_mode='html')
+    success, status_msg, received = verify_payment(text, order_info['amount_crypto'], order_info['symbol'])
 
     if success:
-        await db.log_order(order_info['order_id'], txid, event.chat_id, order_info['product_key'], order_info['usd_price'], order_info['symbol'], 'confirmed')
-        await msg.edit(f"✅ <b>PAYMENT CONFIRMED!</b>\n\n🚀 Your product:\n{order_info['product_url']}", parse_mode='html')
+        await db.log_order(order_info['order_id'], text, event.chat_id, order_info['product_key'], order_info['usd_price'], order_info['symbol'], 'confirmed')
+        await msg.edit(f"✅ <b>PAGADO!</b>\n{order_info['product_url']}", parse_mode='html')
         WAITING_FOR_TXID.pop(event.chat_id)
     else:
-        await db.log_order(order_info['order_id'], txid, event.chat_id, order_info['product_key'], order_info['usd_price'], order_info['symbol'], 'failed')
-        error_text = f"❌ <b>Validation Failed:</b> {status_msg}"
-        if status_msg == "INSUFFICIENT_AMOUNT":
-            error_text += f"\n📉 <b>Received:</b> {received} {order_info['symbol']}"
-        await msg.edit(error_text + f"\n\n🆔 <code>{txid}</code>", parse_mode='html')
+        await db.log_order(order_info['order_id'], text, event.chat_id, order_info['product_key'], order_info['usd_price'], order_info['symbol'], 'failed')
+        await msg.edit(f"❌ <b>Falló:</b> {status_msg}. Si enviaste el dinero, espera y vuelve a enviar el TXID.", parse_mode='html')
