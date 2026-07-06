@@ -166,8 +166,10 @@ async def handler_txid(event):
     order_info = WAITING_FOR_TXID[event.chat_id]
     
     if reply_to.id != order_info['message_id']:
+        print(f"⚠️ [DEBUG] TXID Ignorado: Respondiste al mensaje {reply_to.id}, pero yo esperaba el {order_info['message_id']}.")
         return
         
+    print("✅ [DEBUG] Hash recibido y emparejado con el mensaje correcto. Procesando...")
     order_info = WAITING_FOR_TXID.pop(event.chat_id)
     txid = event.message.text.strip()
     
