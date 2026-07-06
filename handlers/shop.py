@@ -63,25 +63,29 @@ async def handler_wallets(event):
 async def handler_buy(event):
     if not await can_run_command(event): return
     
-    # Bloqueo de orden simultánea
+    # Simultaneous order lock
     if event.chat_id in WAITING_FOR_TXID:
-        await reply_or_edit(event, "❌ <b>Ya tienes una orden activa.</b>\nResponde al mensaje de pago con <code>CANCEL</code> para cancelar la anterior.")
+        await reply_or_edit(event, "❌ <b>You already have an active order.</b>\nReply to the payment message with <code>CANCEL</code> to cancel the previous one and create a new one.", parse_mode='html')
         return
 
     args = event.message.text.split()
     if len(args) < 3:
-        await reply_or_edit(event, "❌ <b>Uso:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>")
+        await reply_or_edit(event, "❌ <b>Usage:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>", parse_mode='html')
         return
     
     product_key, symbol, network = args[1].lower(), args[2].upper(), (args[3].upper() if len(args) > 3 else None)
     
     product = await db.get_product(product_key)
-    if not product: await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found."); return
+    if not product: 
+        await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found.", parse_mode='html')
+        return
 
     address, tag = get_deposit_address(symbol, network=network)
     if not address:
         wallet = await db.get_wallet_by_network(symbol, network) if network else await db.get_wallet(symbol)
-        if not wallet: await reply_or_edit(event, f"❌ No wallet config for {symbol}"); return
+        if not wallet: 
+            await reply_or_edit(event, f"❌ No wallet configuration found for {symbol}", parse_mode='html')
+            return
         address, tag = wallet['address'], ""
         network = wallet['network']
 
