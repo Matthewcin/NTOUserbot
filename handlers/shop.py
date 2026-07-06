@@ -16,6 +16,53 @@ async def reply_or_edit(event, text):
     else:
         await event.reply(text, parse_mode='html')
 
+async def handler_list(event):
+    if not await can_run_command(event): return
+    
+    try:
+        if not db.pool:
+            await reply_or_edit(event, "❌ Error: DB Disconnected.")
+            return
+
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
+        
+        if not rows:
+            await reply_or_edit(event, "📂 <b>EMPTY CATALOG</b>", parse_mode='html')
+            return
+        
+        msg = "🛒 <b>AVAILABLE PRODUCTS</b>\n\n"
+        for row in rows:
+            msg += f"🔹 <b>{row['display_name']}</b>\n"
+            msg += f"   ├ Key: <code>{row['key_name']}</code>\n"
+            msg += f"   └ Price: ${row['price_usd']}\n\n"
+            
+        msg += "ℹ️ Use <code>.info [key]</code> to see details.\n"
+        msg += "💳 Use <code>.buy [key] [SYMBOL]</code> to buy."
+        
+        await reply_or_edit(event, msg)
+        
+    except Exception as e:
+        await reply_or_edit(event, f"❌ Error listing products: {e}")
+
+async def handler_info(event):
+    if not await can_run_command(event): return
+    args = event.message.text.split()
+    if len(args) < 2:
+        await reply_or_edit(event, "ℹ️ Usage: `.info [key]`")
+        return
+    key = args[1].lower().strip()
+    product = await db.get_product(key)
+    if not product:
+        await reply_or_edit(event, f"❌ Product <code>{key}</code> not found.", parse_mode='html')
+        return
+    msg = (f"📦 <b>{product['display_name']}</b>\n"
+           f"💰 <b>Price:</b> ${product['price_usd']} USD\n"
+           f"🔑 <b>Key:</b> <code>{product['key_name']}</code>\n\n"
+           f"📝 <b>Description:</b>\n{product.get('description', 'No description')}\n\n"
+           f"🛒 Buy: <code>.buy {key} [SYMBOL]</code>")
+    await reply_or_edit(event, msg)
+
 async def handler_buy(event):
     if not await can_run_command(event): return
     args = event.message.text.split()
@@ -78,28 +125,22 @@ async def handler_buy(event):
 
 async def handler_txid(event):
     if event.chat_id not in WAITING_FOR_TXID: return
-    
     reply_to = await event.get_reply_message()
     if not reply_to: return
     
     order_info = WAITING_FOR_TXID[event.chat_id]
     if reply_to.id != order_info['message_id']: return
     
+    order_info = WAITING_FOR_TXID.pop(event.chat_id)
     txid = event.message.text.strip()
     
-    # NUEVA VALIDACIÓN: ¿Ya se usó este TXID?
-    if await db.is_txid_used(txid):
-        await event.respond("❌ <b>Error:</b> This TXID has already been used to claim an order.", parse_mode='html')
-        return
-
-    msg = await event.respond("🔍 <b>Verifying transaction on Binance...</b>", parse_mode='html')
+    msg = await event.respond("🔍 <b>Verifying transaction...</b>", parse_mode='html')
     
     success, status_msg = verify_payment(txid, order_info['amount_crypto'], order_info['symbol'])
 
     if success:
-        # Aquí guardamos en la DB y marcamos como usado
         await db.create_order(order_info['order_id'], txid, event.chat_id, order_info['product_key'], order_info['usd_price'])
         await msg.edit(f"✅ <b>PAYMENT CONFIRMED!</b>\n\n🚀 Your product:\n{order_info['product_url']}", parse_mode='html')
-        WAITING_FOR_TXID.pop(event.chat_id)
     else:
+        WAITING_FOR_TXID[event.chat_id] = order_info
         await msg.edit(f"❌ <b>Validation Failed:</b> {status_msg}.", parse_mode='html')
