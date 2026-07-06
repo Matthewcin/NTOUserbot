@@ -23,7 +23,8 @@ def get_coin_price(symbol="LTCUSDT"):
         response.raise_for_status()
         data = response.json()
         return float(data["price"])
-    except:
+    except Exception as e:
+        print(f"Error fetching price: {e}")
         return 0.0
 
 def get_deposit_address(coin, network=None):
@@ -52,10 +53,13 @@ def get_deposit_address(coin, network=None):
     
     try:
         response = requests.get(BASE_URL + endpoint, headers=headers, params=params)
-        response.raise_for_status()
+        if response.status_code != 200:
+            print(f"DEBUG Binance API Error: {response.text}")
+            return None, None
         data = response.json()
         return data.get("address"), data.get("tag", "")
-    except:
+    except Exception as e:
+        print(f"Error in get_deposit_address: {e}")
         return None, None
 
 def get_deposit_address_list(coin):
