@@ -11,11 +11,11 @@ from binance_api import get_coin_price, get_deposit_address, verify_payment
 
 WAITING_FOR_TXID = {}
 
-async def reply_or_edit(event, text):
+async def reply_or_edit(event, text, **kwargs):
     if event.out:
-        await event.edit(text, parse_mode='html')
+        await event.edit(text, **kwargs)
     else:
-        await event.reply(text, parse_mode='html')
+        await event.reply(text, **kwargs)
 
 # --- 1. LIST PRODUCT CATALOG ---
 async def handler_list(event):
