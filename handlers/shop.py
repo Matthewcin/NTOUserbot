@@ -22,50 +22,50 @@ async def handler_list(event):
     try:
         async with db.pool.acquire() as conn:
             rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
-        if not rows: await reply_or_edit(event, "📂 <b>CATÁLOGO VACÍO</b>"); return
+        if not rows: await reply_or_edit(event, "📂 <b>EMPTY CATALOG</b>"); return
         
-        msg = "🛒 <b>PRODUCTOS DISPONIBLES</b>\n\n"
+        msg = "🛒 <b>AVAILABLE PRODUCTS</b>\n\n"
         for row in rows:
             msg += f"🔹 <b>{row['display_name']}</b> | Key: <code>{row['key_name']}</code> | Price: ${row['price_usd']}\n"
         await reply_or_edit(event, msg)
     except Exception as e:
         await reply_or_edit(event, f"❌ Error: {e}")
 
-# --- 2. INFORMACIÓN DE PRODUCTO ---
+# --- 2. INFORMACIÓN ---
 async def handler_info(event):
     if not await can_run_command(event): return
     args = event.message.text.split()
-    if len(args) < 2: await reply_or_edit(event, "ℹ️ Uso: <code>.info [key]</code>"); return
+    if len(args) < 2: await reply_or_edit(event, "ℹ️ Usage: <code>.info [key]</code>"); return
     
     key = args[1].lower().strip()
     product = await db.get_product(key)
-    if not product: await reply_or_edit(event, f"❌ Producto <code>{key}</code> no encontrado."); return
+    if not product: await reply_or_edit(event, f"❌ Product <code>{key}</code> not found."); return
     
     msg = (f"📦 <b>{product['display_name']}</b>\n"
-           f"💰 <b>Precio:</b> ${product['price_usd']} USD\n"
+           f"💰 <b>Price:</b> ${product['price_usd']} USD\n"
            f"🔑 <b>Key:</b> <code>{product['key_name']}</code>\n\n"
-           f"🛒 Compra: <code>.buy {key} [SYMBOL] [NETWORK]</code>")
+           f"🛒 Buy: <code>.buy {key} [SYMBOL] [NETWORK]</code>")
     await reply_or_edit(event, msg)
 
 # --- 3. LISTAR BILLETERAS ---
 async def handler_wallets(event):
     if not await can_run_command(event): return
     async with db.pool.acquire() as conn:
-        rows = await conn.fetch("SELECT symbol, network, address FROM wallets")
-    if not rows: await reply_or_edit(event, "❌ No hay billeteras configuradas."); return
+        rows = await conn.fetch("SELECT symbol, network, address FROM wallets ORDER BY symbol, network")
+    if not rows: await reply_or_edit(event, "❌ No wallets configured."); return
     
-    msg = "🌐 <b>FAMOUS WALLETS / NETWORKS</b>\n\n"
+    msg = "🌐 <b>AVAILABLE WALLETS</b>\n\n"
     for r in rows:
         msg += f"💰 <b>{r['symbol']}</b> ({r['network']})\n<code>{r['address']}</code>\n\n"
     await reply_or_edit(event, msg)
 
-# --- 4. COMPRAR ---
+# --- 4. COMPRAR (CON SELECTOR DE RED) ---
 async def handler_buy(event):
     if not await can_run_command(event): return
     
-    # Simultaneous order lock
+    # Check for active order
     if event.chat_id in WAITING_FOR_TXID:
-        await reply_or_edit(event, "❌ <b>You already have an active order.</b>\nReply to the payment message with <code>CANCEL</code> to cancel the previous one and create a new one.", parse_mode='html')
+        await reply_or_edit(event, "❌ <b>You already have an active order.</b>\nReply to the payment message with <code>CANCEL</code> to cancel the previous one.")
         return
 
     args = event.message.text.split()
@@ -73,19 +73,29 @@ async def handler_buy(event):
         await reply_or_edit(event, "❌ <b>Usage:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>", parse_mode='html')
         return
     
-    product_key, symbol, network = args[1].lower(), args[2].upper(), (args[3].upper() if len(args) > 3 else None)
+    product_key, symbol = args[1].lower(), args[2].upper()
+    network = args[3].upper() if len(args) > 3 else None
     
-    product = await db.get_product(product_key)
-    if not product: 
-        await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found.", parse_mode='html')
+    # Fetch networks from DB
+    async with db.pool.acquire() as conn:
+        available_nets = await conn.fetch("SELECT network FROM wallets WHERE symbol = $1", symbol)
+    
+    # If user didn't select a network but multiple exist, show menu
+    if len(available_nets) > 1 and not network:
+        msg = f"Available Networks for {symbol}:\n\n"
+        for row in available_nets:
+            net = row['network']
+            msg += f"{net}; <code>.buy {product_key} {symbol} {net}</code>\n"
+        await reply_or_edit(event, msg, parse_mode='html')
         return
+
+    product = await db.get_product(product_key)
+    if not product: await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found."); return
 
     address, tag = get_deposit_address(symbol, network=network)
     if not address:
         wallet = await db.get_wallet_by_network(symbol, network) if network else await db.get_wallet(symbol)
-        if not wallet: 
-            await reply_or_edit(event, f"❌ No wallet configuration found for {symbol}", parse_mode='html')
-            return
+        if not wallet: await reply_or_edit(event, f"❌ No wallet config for {symbol} {network or ''}"); return
         address, tag = wallet['address'], ""
         network = wallet['network']
 
@@ -118,22 +128,20 @@ async def handler_txid(event):
     if reply_to.id != order_info['message_id']: return
     
     text = event.message.text.strip()
-    
     if text.upper() == "CANCEL":
         WAITING_FOR_TXID.pop(event.chat_id)
-        await event.reply("✅ Orden cancelada.")
+        await event.reply("✅ Order Cancelled Successfully.")
         return
     
-    if await db.is_txid_used(text):
-        await event.reply("❌ Este TXID ya fue usado."); return
+    if await db.is_txid_used(text): await event.reply("❌ This TXID was already used."); return
 
-    msg = await event.respond("🔍 <b>Verificando...</b>", parse_mode='html')
+    msg = await event.respond("🔍 <b>Verifying...</b>", parse_mode='html')
     success, status_msg, received = verify_payment(text, order_info['amount_crypto'], order_info['symbol'])
 
     if success:
         await db.log_order(order_info['order_id'], text, event.chat_id, order_info['product_key'], order_info['usd_price'], order_info['symbol'], 'confirmed')
-        await msg.edit(f"✅ <b>PAGADO!</b>\n{order_info['product_url']}", parse_mode='html')
+        await msg.edit(f"✅ <b>ORDER CONFIRMED!</b>\n{order_info['product_url']}", parse_mode='html')
         WAITING_FOR_TXID.pop(event.chat_id)
     else:
         await db.log_order(order_info['order_id'], text, event.chat_id, order_info['product_key'], order_info['usd_price'], order_info['symbol'], 'failed')
-        await msg.edit(f"❌ <b>Falló:</b> {status_msg}. Si enviaste el dinero, espera y vuelve a enviar el TXID.", parse_mode='html')
+        await msg.edit(f"❌ <b>Failed:</b> {status_msg}. If you sent the money, wait a few seconds and Resend TXID.", parse_mode='html')
