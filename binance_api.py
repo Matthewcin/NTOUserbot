@@ -33,7 +33,8 @@ def get_deposit_address(coin, network=None):
     
     params = {
         "coin": coin.upper(),
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "recvWindow": 60000
     }
     
     if network:
@@ -68,7 +69,8 @@ def get_deposit_address_list(coin):
     
     params = {
         "coin": coin.upper(),
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "recvWindow": 60000
     }
     
     query_string = urlencode(params)
@@ -97,6 +99,7 @@ def get_binance_deposits(coin="USDT", limit=10):
     params = {
         "coin": coin,
         "timestamp": timestamp,
+        "recvWindow": 60000,
         "limit": limit
     }
     
