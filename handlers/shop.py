@@ -10,55 +10,78 @@ from binance_api import get_coin_price, get_deposit_address, verify_payment
 
 WAITING_FOR_TXID = {}
 
-# --- LISTAR PRODUCTOS (Soluciona tu error de import) ---
+async def reply_or_edit(event, text):
+    if event.out:
+        await event.edit(text, parse_mode='html')
+    else:
+        await event.reply(text, parse_mode='html')
+
+# --- 1. LISTAR PRODUCTOS ---
 async def handler_list(event):
     if not await can_run_command(event): return
     try:
-        if not db.pool: await event.reply("❌ DB Disconnected."); return
         async with db.pool.acquire() as conn:
             rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
-        if not rows: await event.reply("📂 <b>CATALOGO VACÍO</b>", parse_mode='html'); return
+        if not rows: await reply_or_edit(event, "📂 <b>CATÁLOGO VACÍO</b>"); return
         
         msg = "🛒 <b>PRODUCTOS DISPONIBLES</b>\n\n"
         for row in rows:
             msg += f"🔹 <b>{row['display_name']}</b> | Key: <code>{row['key_name']}</code> | Price: ${row['price_usd']}\n"
-        await event.reply(msg, parse_mode='html')
+        await reply_or_edit(event, msg)
     except Exception as e:
-        await event.reply(f"❌ Error: {e}")
+        await reply_or_edit(event, f"❌ Error: {e}")
 
-# --- LISTAR BILLETERAS FAMOSAS/DISPONIBLES ---
+# --- 2. INFORMACIÓN DE PRODUCTO ---
+async def handler_info(event):
+    if not await can_run_command(event): return
+    args = event.message.text.split()
+    if len(args) < 2: await reply_or_edit(event, "ℹ️ Uso: <code>.info [key]</code>"); return
+    
+    key = args[1].lower().strip()
+    product = await db.get_product(key)
+    if not product: await reply_or_edit(event, f"❌ Producto <code>{key}</code> no encontrado."); return
+    
+    msg = (f"📦 <b>{product['display_name']}</b>\n"
+           f"💰 <b>Precio:</b> ${product['price_usd']} USD\n"
+           f"🔑 <b>Key:</b> <code>{product['key_name']}</code>\n\n"
+           f"🛒 Compra: <code>.buy {key} [SYMBOL] [NETWORK]</code>")
+    await reply_or_edit(event, msg)
+
+# --- 3. LISTAR BILLETERAS ---
 async def handler_wallets(event):
     if not await can_run_command(event): return
     async with db.pool.acquire() as conn:
         rows = await conn.fetch("SELECT symbol, network, address FROM wallets")
-    if not rows: await event.reply("❌ No wallets configured."); return
+    if not rows: await reply_or_edit(event, "❌ No hay billeteras configuradas."); return
+    
     msg = "🌐 <b>FAMOUS WALLETS / NETWORKS</b>\n\n"
     for r in rows:
         msg += f"💰 <b>{r['symbol']}</b> ({r['network']})\n<code>{r['address']}</code>\n\n"
-    await event.reply(msg, parse_mode='html')
+    await reply_or_edit(event, msg)
 
+# --- 4. COMPRAR ---
 async def handler_buy(event):
     if not await can_run_command(event): return
     
-    # 1. Bloqueo de orden simultánea
+    # Bloqueo de orden simultánea
     if event.chat_id in WAITING_FOR_TXID:
-        await event.reply("❌ <b>Ya tienes una orden activa.</b>\nResponde al mensaje de pago con <code>CANCEL</code> para cancelar la anterior y crear una nueva.", parse_mode='html')
+        await reply_or_edit(event, "❌ <b>Ya tienes una orden activa.</b>\nResponde al mensaje de pago con <code>CANCEL</code> para cancelar la anterior.")
         return
 
     args = event.message.text.split()
     if len(args) < 3:
-        await event.reply("❌ <b>Uso:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>", parse_mode='html')
+        await reply_or_edit(event, "❌ <b>Uso:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>")
         return
     
     product_key, symbol, network = args[1].lower(), args[2].upper(), (args[3].upper() if len(args) > 3 else None)
     
     product = await db.get_product(product_key)
-    if not product: await event.reply(f"❌ Product <code>{product_key}</code> not found."); return
+    if not product: await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found."); return
 
     address, tag = get_deposit_address(symbol, network=network)
     if not address:
         wallet = await db.get_wallet_by_network(symbol, network) if network else await db.get_wallet(symbol)
-        if not wallet: await event.reply(f"❌ No wallet config for {symbol}"); return
+        if not wallet: await reply_or_edit(event, f"❌ No wallet config for {symbol}"); return
         address, tag = wallet['address'], ""
         network = wallet['network']
 
@@ -81,6 +104,7 @@ async def handler_buy(event):
         'symbol': symbol, 'amount_crypto': amount_crypto, 'usd_price': usd_price, 'message_id': sent_msg.id
     }
 
+# --- 5. VERIFICAR TXID ---
 async def handler_txid(event):
     if event.chat_id not in WAITING_FOR_TXID: return
     reply_to = await event.get_reply_message()
@@ -91,13 +115,11 @@ async def handler_txid(event):
     
     text = event.message.text.strip()
     
-    # Lógica de Cancelación
     if text.upper() == "CANCEL":
         WAITING_FOR_TXID.pop(event.chat_id)
-        await event.reply("✅ Orden cancelada con éxito.")
+        await event.reply("✅ Orden cancelada.")
         return
     
-    # Verificación normal
     if await db.is_txid_used(text):
         await event.reply("❌ Este TXID ya fue usado."); return
 
