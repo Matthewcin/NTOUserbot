@@ -451,4 +451,19 @@ class Database:
             row = await conn.fetchrow("SELECT order_id FROM orders WHERE oxapay_track_id = $1", str(tx_id))
             return row is not None
 
+    async def update_gb_stats(self, amount):
+        if not self.pool: return 0
+        async with self.pool.acquire() as conn:
+            # Atomic update: increments existing value and returns the new one
+            return await conn.fetchval("""
+                INSERT INTO stats (key, value) VALUES ('total_gb', $1)
+                ON CONFLICT (key) DO UPDATE SET value = stats.value + $1
+                RETURNING value
+            """, amount)
+
+    async def get_gb_stats(self):
+        if not self.pool: return 0
+        async with self.pool.acquire() as conn:
+            res = await conn.fetchval("SELECT value FROM stats WHERE key = 'total_gb'")
+            return res if res is not None else 0
 db = Database()
