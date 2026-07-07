@@ -32,11 +32,12 @@ class Database:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id TEXT PRIMARY KEY,
-                    oxapay_track_id TEXT, 
+                    tx_id TEXT,
                     user_id BIGINT,
                     product_key TEXT,
                     amount_usd NUMERIC(10, 2),
-                    status TEXT DEFAULT 'pending',
+                    symbol TEXT,
+                    status TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -426,5 +427,28 @@ class Database:
                 RETURNING code;
             """, count)
             return [row['code'] for row in rows]
+        
+    async def get_wallet_by_network(self, symbol, network):
+        if not self.pool: return None
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT * FROM wallets WHERE symbol = $1 AND network = $2", 
+                symbol.upper(), network.upper()
+            )
+
+    async def log_order(self, order_id, tx_id, user_id, product_key, amount_usd, symbol, status):
+        if not self.pool: return
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO orders (order_id, tx_id, user_id, product_key, amount_usd, symbol, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """, order_id, str(tx_id), user_id, product_key, amount_usd, symbol, status)
+
+    async def is_txid_used(self, tx_id):
+        if not self.pool: return True # Si no hay DB, bloqueamos por seguridad
+        async with self.pool.acquire() as conn:
+            # Buscamos si existe alguna orden exitosa con este tx_id
+            row = await conn.fetchrow("SELECT order_id FROM orders WHERE oxapay_track_id = $1", str(tx_id))
+            return row is not None
 
 db = Database()
