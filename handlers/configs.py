@@ -87,7 +87,7 @@ async def handler_addcfg(event):
         await event.edit(f"✅ Added **{name}** to **{category}**.")
         await sync_list_message(event)
     else:
-        await event.edit(f"❌ Error.")
+        await event.edit("❌ Error.")
 
 async def handler_delcfg(event):
     if not await can_run_command(event): return
@@ -103,7 +103,7 @@ async def handler_delcfg(event):
         await event.edit(f"🗑 Deleted **{name}** from **{category}**.")
         await sync_list_message(event)
     else:
-        await event.edit(f"❌ Config not found.")
+        await event.edit("❌ Config not found.")
 
 async def handler_cfgstatus(event):
     if not await can_run_command(event): return
@@ -123,10 +123,10 @@ async def handler_cfgstatus(event):
     new_emoji = STATUS_MAP[status_key]
 
     if await db.update_config_status(category, name, new_emoji):
-        await event.edit(f"✅ Status updated.")
+        await event.edit("✅ Status updated.")
         await sync_list_message(event)
     else:
-        await event.edit(f"❌ Config not found.")
+        await event.edit("❌ Config not found.")
 
 async def handler_editcfg(event):
     if not await can_run_command(event): return
@@ -140,13 +140,13 @@ async def handler_editcfg(event):
     name = " ".join(args[2:-1])
 
     if await db.update_config_price(category, name, price):
-        await event.edit(f"✅ Price updated.")
+        await event.edit("✅ Price updated.")
         await sync_list_message(event)
     else:
-        await event.edit(f"❌ Config not found.")
+        await event.edit("❌ Config not found.")
 
-    async def handler_cfg_info(event):
-        if not await can_run_command(event): return
+async def handler_cfg_info(event):
+    if not await can_run_command(event): return
     
     args = event.message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -156,7 +156,6 @@ async def handler_editcfg(event):
 
     search_term = args[1].strip()
     
-    # Buscamos la config en la base de datos
     conf = await db.get_config_by_name(search_term)
     
     if not conf:
@@ -164,10 +163,8 @@ async def handler_editcfg(event):
         if event.out: await event.delete()
         return
 
-    # Formatear las fechas para que se vean limpias (YYYY-MM-DD)
     updated_str = conf['updated_at'].strftime("%Y-%m-%d") if conf.get('updated_at') else "Unknown"
 
-    # Construir el mensaje
     msg = (
         f"⚙️ **CONFIG INFORMATION**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -186,3 +183,23 @@ async def handler_editcfg(event):
         await event.edit(msg)
     else:
         await event.reply(msg)
+
+async def handler_setinfo(event):
+    if not await can_run_command(event): return
+    
+    args = event.message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await event.edit("❌ Use: `.setinfo Name | Capture | TLS | Rules | Proxies`")
+        return
+        
+    parts = [p.strip() for p in args[1].split('|')]
+    if len(parts) != 5:
+        await event.edit("❌ You must provide exactly 5 parts separated by |\nEx: `.setinfo Disney+ | Full | Yes | None | Any`")
+        return
+        
+    name, capture, tls, rules, proxies = parts
+    
+    if await db.set_config_info(name, capture, tls, rules, proxies):
+        await event.edit(f"✅ Info updated for **{name}**.")
+    else:
+        await event.edit("❌ Config not found.")
