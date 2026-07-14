@@ -176,7 +176,7 @@ async def handler_apicheck(event):
     # 👇 MODIFICACIÓN AQUÍ PARA VER EL ERROR REAL DE OB
     if status != 200: 
         error_msg = str(user_data)[:500] if user_data else "No details"
-        return await event.respond(f"❌ **Server Error (Code: {status})**\n\n🔍 **OB Server Says:**\n`{error_msg}`")
+        return await event.respond(f"❌ **Server Error (Code: {status})**\n")
     
     db_user_id = None
     cooldown_info = "Unknown"

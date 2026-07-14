@@ -171,7 +171,7 @@ async def handler_cfg_info(event):
         f"🏷️ **Name:** `{conf['name']}`\n"
         f"📂 **Category:** {conf['category']}\n"
         f"📊 **Status:** {conf['status']}\n"
-        f"🛒 **Price:** {conf['price'] if conf['price'] else 'Free/Included'}\n\n"
+        f"🛒 **Price:** {conf['price'] if conf['price'] else 'Included in Config Cloud'}\n\n"
         f"📑 **Capture:** {conf.get('capture', 'None')}\n"
         f"🔒 **Requires TLS:** {conf.get('requires_tls', 'No')}\n"
         f"📜 **Login Rules:** {conf.get('login_rules', 'None')}\n"

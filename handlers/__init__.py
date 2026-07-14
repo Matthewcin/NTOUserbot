@@ -25,6 +25,7 @@ from .queue_system import (
 
 from .configs import (
     handler_cfgsync,
+    handler_cfglist,
     handler_addcfg,
     handler_delcfg,
     handler_cfgstatus,
@@ -39,62 +40,63 @@ from .proxy_manager import handler_addproxy, handler_giveproxy
 
 def register_all_handlers(client):
     client.add_event_handler(handler_welcome, events.ChatAction)
-    client.add_event_handler(handler_hello, events.NewMessage(pattern=r'(?i)\.hello'))
+    client.add_event_handler(handler_hello, events.NewMessage(pattern=r'(?i)^\.hello'))
     
-    client.add_event_handler(handler_help, events.NewMessage(pattern=r'(?i)\.help'))
-    client.add_event_handler(handler_cmds, events.NewMessage(pattern=r'(?i)\.cmds'))
-    client.add_event_handler(handler_urldebug, events.NewMessage(pattern=r'(?i)\.urldebug(?:\s+(.*))?'))
-    client.add_event_handler(handler_guide, events.NewMessage(pattern=r'(?i)\.guide'))
-    client.add_event_handler(handler_testbtn, events.NewMessage(pattern=r'(?i)\.testbtn'))
+    client.add_event_handler(handler_help, events.NewMessage(pattern=r'(?i)^\.help'))
+    client.add_event_handler(handler_cmds, events.NewMessage(pattern=r'(?i)^\.cmds'))
+    client.add_event_handler(handler_urldebug, events.NewMessage(pattern=r'(?i)^\.urldebug(?: |$)'))
+    client.add_event_handler(handler_guide, events.NewMessage(pattern=r'(?i)^\.guide'))
+    client.add_event_handler(handler_testbtn, events.NewMessage(pattern=r'(?i)^\.testbtn'))
     
-    client.add_event_handler(handler_request, events.NewMessage(pattern=r'(?i)\.request(?:\s+(.*))?'))
-    client.add_event_handler(handler_queue, events.NewMessage(pattern=r'(?i)\.(queue|q)$'))
+    client.add_event_handler(handler_request, events.NewMessage(pattern=r'(?i)^\.request(?: |$)'))
+    client.add_event_handler(handler_queue, events.NewMessage(pattern=r'(?i)^\.(queue|q)$'))
     
-    client.add_event_handler(handler_qlist, events.NewMessage(outgoing=True, pattern=r'(?i)\.qlist$'))
-    client.add_event_handler(handler_qa, events.NewMessage(outgoing=True, pattern=r'(?i)\.qa$'))
-    client.add_event_handler(handler_qs, events.NewMessage(outgoing=True, pattern=r'(?i)\.qs$'))
-    client.add_event_handler(handler_qend, events.NewMessage(outgoing=True, pattern=r'(?i)\.qend\s+(.*)'))
-    client.add_event_handler(handler_qdel, events.NewMessage(outgoing=True, pattern=r'(?i)\.qdel\s+(.*)'))
+    client.add_event_handler(handler_qlist, events.NewMessage(outgoing=True, pattern=r'(?i)^\.qlist$'))
+    client.add_event_handler(handler_qa, events.NewMessage(outgoing=True, pattern=r'(?i)^\.qa$'))
+    client.add_event_handler(handler_qs, events.NewMessage(outgoing=True, pattern=r'(?i)^\.qs$'))
+    client.add_event_handler(handler_qend, events.NewMessage(outgoing=True, pattern=r'(?i)^\.qend(?: |$)'))
+    client.add_event_handler(handler_qdel, events.NewMessage(outgoing=True, pattern=r'(?i)^\.qdel(?: |$)'))
     
-    client.add_event_handler(handler_status, events.NewMessage(pattern=r'(?i)\.status(?:\s+(.*))?'))
+    client.add_event_handler(handler_status, events.NewMessage(pattern=r'(?i)^\.status(?: |$)'))
     
-    client.add_event_handler(handler_list, events.NewMessage(pattern=r'(?i)\.list'))
-    client.add_event_handler(handler_info, events.NewMessage(pattern=r'(?i)\.info(?:\s+(.*))?'))
-    client.add_event_handler(handler_buy, events.NewMessage(pattern=r'(?i)\.buy(?:\s+(.*))?'))
-    client.add_event_handler(handler_wallets, events.NewMessage(pattern=r'(?i)\.wallets'))
+    client.add_event_handler(handler_list, events.NewMessage(pattern=r'(?i)^\.list'))
+    client.add_event_handler(handler_info, events.NewMessage(pattern=r'(?i)^\.info(?: |$)'))
+    client.add_event_handler(handler_buy, events.NewMessage(pattern=r'(?i)^\.buy(?: |$)'))
+    client.add_event_handler(handler_wallets, events.NewMessage(pattern=r'(?i)^\.wallets'))
     client.add_event_handler(handler_txid, events.NewMessage())
     
-    client.add_event_handler(handler_redeem, events.NewMessage(pattern=r'(?i)\.redeem(?:\s+(.*))?'))
-    client.add_event_handler(handler_changeip, events.NewMessage(pattern=r'(?i)\.changeip(?:\s+(.*))?'))
+    client.add_event_handler(handler_redeem, events.NewMessage(pattern=r'(?i)^\.redeem(?: |$)'))
+    client.add_event_handler(handler_changeip, events.NewMessage(pattern=r'(?i)^\.changeip(?: |$)'))
     
-    client.add_event_handler(handler_secret_menu, events.NewMessage(outgoing=True, pattern=r'\.2284230134'))
-    client.add_event_handler(handler_add, events.NewMessage(outgoing=True, pattern=r'(?i)\.add\s+(.*)'))
-    client.add_event_handler(handler_del, events.NewMessage(outgoing=True, pattern=r'(?i)\.del\s+(.*)'))
-    client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'(?i)\.edit\s+(.*)'))
-    client.add_event_handler(handler_warn, events.NewMessage(outgoing=True, pattern=r'(?i)\.warn(?:\s+(.*))?'))
+    client.add_event_handler(handler_secret_menu, events.NewMessage(outgoing=True, pattern=r'^\.2284230134'))
+    client.add_event_handler(handler_add, events.NewMessage(outgoing=True, pattern=r'(?i)^\.add(?: |$)'))
+    client.add_event_handler(handler_del, events.NewMessage(outgoing=True, pattern=r'(?i)^\.del(?: |$)'))
+    client.add_event_handler(handler_edit, events.NewMessage(outgoing=True, pattern=r'(?i)^\.edit(?: |$)'))
+    client.add_event_handler(handler_warn, events.NewMessage(outgoing=True, pattern=r'(?i)^\.warn(?: |$)'))
     
-    client.add_event_handler(handler_generate, events.NewMessage(outgoing=True, pattern=r'(?i)\.generate\s+(.*)'))
-    client.add_event_handler(handler_addgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.addgroup\s+(.*)'))
-    client.add_event_handler(handler_delgroup, events.NewMessage(outgoing=True, pattern=r'(?i)\.delgroup\s+(.*)'))
-    client.add_event_handler(handler_apicheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.apicheck\s+(.*)'))
+    client.add_event_handler(handler_generate, events.NewMessage(outgoing=True, pattern=r'(?i)^\.generate(?: |$)'))
+    client.add_event_handler(handler_addgroup, events.NewMessage(outgoing=True, pattern=r'(?i)^\.addgroup(?: |$)'))
+    client.add_event_handler(handler_delgroup, events.NewMessage(outgoing=True, pattern=r'(?i)^\.delgroup(?: |$)'))
+    client.add_event_handler(handler_apicheck, events.NewMessage(outgoing=True, pattern=r'(?i)^\.apicheck(?: |$)'))
     
-    client.add_event_handler(handler_pay, events.NewMessage(outgoing=True, pattern=r'(?i)\.pay\s+(.*)'))
-    client.add_event_handler(handler_payadd, events.NewMessage(outgoing=True, pattern=r'(?i)\.payadd\s+(.*)'))
-    client.add_event_handler(handler_payedit, events.NewMessage(outgoing=True, pattern=r'(?i)\.payedit\s+(.*)'))
-    client.add_event_handler(handler_paylist, events.NewMessage(outgoing=True, pattern=r'(?i)\.paylist'))
-    client.add_event_handler(handler_paycheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.paycheck\s+(.*)'))
+    client.add_event_handler(handler_pay, events.NewMessage(outgoing=True, pattern=r'(?i)^\.pay(?: |$)'))
+    client.add_event_handler(handler_payadd, events.NewMessage(outgoing=True, pattern=r'(?i)^\.payadd(?: |$)'))
+    client.add_event_handler(handler_payedit, events.NewMessage(outgoing=True, pattern=r'(?i)^\.payedit(?: |$)'))
+    client.add_event_handler(handler_paylist, events.NewMessage(outgoing=True, pattern=r'(?i)^\.paylist'))
+    client.add_event_handler(handler_paycheck, events.NewMessage(outgoing=True, pattern=r'(?i)^\.paycheck(?: |$)'))
 
-    client.add_event_handler(handler_cfgsync, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgsync$'))
-    client.add_event_handler(handler_addcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.addcfg\s+(.*)'))
-    client.add_event_handler(handler_delcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.delcfg\s+(.*)'))
-    client.add_event_handler(handler_cfgstatus, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgstatus\s+(.*)'))
-    client.add_event_handler(handler_editcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.editcfg\s+(.*)'))
-    client.add_event_handler(handler_cfg_info, events.NewMessage(pattern=r'(?i)\.cfg(?:\s+(.*))?'))
-    client.add_event_handler(handler_setinfo, events.NewMessage(outgoing=True, pattern=r'(?i)\.setinfo(?:\s+(.*))?'))
+    client.add_event_handler(handler_cfgsync, events.NewMessage(outgoing=True, pattern=r'(?i)^\.cfgsync$'))
+    client.add_event_handler(handler_cfglist, events.NewMessage(outgoing=True, pattern=r'(?i)^\.cfglist$'))
+    client.add_event_handler(handler_addcfg, events.NewMessage(outgoing=True, pattern=r'(?i)^\.addcfg(?: |$)'))
+    client.add_event_handler(handler_delcfg, events.NewMessage(outgoing=True, pattern=r'(?i)^\.delcfg(?: |$)'))
+    client.add_event_handler(handler_cfgstatus, events.NewMessage(outgoing=True, pattern=r'(?i)^\.cfgstatus(?: |$)'))
+    client.add_event_handler(handler_editcfg, events.NewMessage(outgoing=True, pattern=r'(?i)^\.editcfg(?: |$)'))
+    client.add_event_handler(handler_cfg_info, events.NewMessage(pattern=r'(?i)^\.cfg(?: |$)'))
+    client.add_event_handler(handler_setinfo, events.NewMessage(outgoing=True, pattern=r'(?i)^\.setinfo(?: |$)'))
 
     client.add_event_handler(handler_weekend_autoresponder, events.NewMessage(incoming=True))
     
-    client.add_event_handler(handler_bought, events.NewMessage(outgoing=True, pattern=r'(?i)\.bought\s+([^\s]+)\s+(.+)'))
+    client.add_event_handler(handler_bought, events.NewMessage(outgoing=True, pattern=r'(?i)^\.bought(?: |$)'))
 
-    client.add_event_handler(handler_addproxy, events.NewMessage(pattern=r'\.addproxy'))
-    client.add_event_handler(handler_giveproxy, events.NewMessage(pattern=r'\.giveproxy\s+(.*)'))
+    client.add_event_handler(handler_addproxy, events.NewMessage(pattern=r'^\.addproxy'))
+    client.add_event_handler(handler_giveproxy, events.NewMessage(pattern=r'^\.giveproxy(?: |$)'))
