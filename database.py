@@ -86,6 +86,17 @@ class Database:
                     UNIQUE(category, name)
                 );
             """)
+
+            try: await conn.execute("ALTER TABLE configs ADD COLUMN IF NOT EXISTS capture TEXT DEFAULT 'None';")
+            except: pass
+            try: await conn.execute("ALTER TABLE configs ADD COLUMN IF NOT EXISTS requires_tls TEXT DEFAULT 'No';")
+            except: pass
+            try: await conn.execute("ALTER TABLE configs ADD COLUMN IF NOT EXISTS login_rules TEXT DEFAULT 'None';")
+            except: pass
+            try: await conn.execute("ALTER TABLE configs ADD COLUMN IF NOT EXISTS proxies_admitted TEXT DEFAULT 'Any';")
+            except: pass
+            try: await conn.execute("ALTER TABLE configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+            except: pass
             
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS proxies (
@@ -415,5 +426,17 @@ class Database:
          if not self.pool: return None
          async with self.pool.acquire() as conn:
              return await conn.fetchrow("SELECT message_id, topic_id FROM config_list_messages WHERE chat_id = $1", chat_id)
+
+    async def get_config_by_name(self, search_term):
+        if not self.pool: return None
+        
+        # Búsqueda inteligente: Si el usuario pone "CLOUD Unsorted - Test123", nos quedamos con "Test123"
+        if "-" in search_term:
+            search_term = search_term.split("-")[-1].strip()
+            
+        async with self.pool.acquire() as conn:
+            # ILIKE hace que ignore mayúsculas y minúsculas (TEsT123 funcionará igual)
+            # Los % a los lados permiten que encuentre coincidencias parciales
+            return await conn.fetchrow("SELECT * FROM configs WHERE name ILIKE $1", f"%{search_term}%")
 
 db = Database()

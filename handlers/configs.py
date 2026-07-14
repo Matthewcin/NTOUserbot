@@ -144,3 +144,45 @@ async def handler_editcfg(event):
         await sync_list_message(event)
     else:
         await event.edit(f"❌ Config not found.")
+
+    async def handler_cfg_info(event):
+        if not await can_run_command(event): return
+    
+    args = event.message.text.split(maxsplit=1)
+    if len(args) < 2:
+        msg = await event.reply("❌ **Usage:** `.cfg [Config Name]`\nEx: `.cfg Disney+`")
+        if event.out: await event.delete()
+        return
+
+    search_term = args[1].strip()
+    
+    # Buscamos la config en la base de datos
+    conf = await db.get_config_by_name(search_term)
+    
+    if not conf:
+        msg = await event.reply(f"❌ Config not found for: `{search_term}`")
+        if event.out: await event.delete()
+        return
+
+    # Formatear las fechas para que se vean limpias (YYYY-MM-DD)
+    updated_str = conf['updated_at'].strftime("%Y-%m-%d") if conf.get('updated_at') else "Unknown"
+
+    # Construir el mensaje
+    msg = (
+        f"⚙️ **CONFIG INFORMATION**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏷️ **Name:** `{conf['name']}`\n"
+        f"📂 **Category:** {conf['category']}\n"
+        f"📊 **Status:** {conf['status']}\n"
+        f"🛒 **Price:** {conf['price'] if conf['price'] else 'Free/Included'}\n\n"
+        f"📑 **Capture:** {conf.get('capture', 'None')}\n"
+        f"🔒 **Requires TLS:** {conf.get('requires_tls', 'No')}\n"
+        f"📜 **Login Rules:** {conf.get('login_rules', 'None')}\n"
+        f"🌐 **Proxies Admitted:** {conf.get('proxies_admitted', 'Any')}\n\n"
+        f"📅 **Latest Update:** {updated_str}\n"
+    )
+
+    if event.out:
+        await event.edit(msg)
+    else:
+        await event.reply(msg)
