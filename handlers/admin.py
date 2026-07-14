@@ -172,7 +172,11 @@ async def handler_apicheck(event):
     api_key = api_key.strip()
     
     user_data, status = _api_request('GET', f"users/{api_key}")
-    if status != 200: return await event.respond(f"❌ Key not found on Server (Code: {status}).")
+    
+    # 👇 MODIFICACIÓN AQUÍ PARA VER EL ERROR REAL DE OB
+    if status != 200: 
+        error_msg = str(user_data)[:500] if user_data else "No details"
+        return await event.respond(f"❌ **Server Error (Code: {status})**\n\n🔍 **OB Server Says:**\n`{error_msg}`")
     
     db_user_id = None
     cooldown_info = "Unknown"
