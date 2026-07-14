@@ -9,7 +9,7 @@ DB_URL = os.getenv('DB_URL', 'postgresql://neondb_owner:npg_Nd2D8BMWYGXj@ep-flat
 FREE_CRYPTO_API_TOKEN = "4hgzw1dnorurolqkpcg1"
 
 # ☁️ OpenBullet API
-OB_URL = "http://cloudfig9-001-site1.mtempurl.com/top"
+OB_URL = "https://cloudfig10-001-site1.ktempurl.com/top"
 OB_SECRET = "ZjBmYjQ2ZTdiMmRiZTdmYzAxNjY1Nzc1MjVkNGNlY2JjYmU3NWQwYjNiNGIzMWU0MTVlYTcxMWM5MmY3MWRkNmQzMzU1MjYzOGY4OWZjMjg2NzlhMjg1ZjZhMTEyOWZmMmJiZjYyMGM1Y2VhMjMwMDE3YzdmODJiNGJjM2RmN2Q="
 
 TARGET_GROUP = 'myConfigCloud'
