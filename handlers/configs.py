@@ -14,27 +14,30 @@ STATUS_MAP = {
 async def generate_config_list_text():
     configs = await db.get_all_configs()
     if not configs: return "📁 **Config List is Empty**"
+    
     grouped = {}
     for conf in configs:
         cat = conf['category']
         if cat not in grouped: grouped[cat] = []
         grouped[cat].append(conf)
+        
     order = ['STREAMING', 'GAMING', 'EDUCATION', 'ADULT', 'FOOD', 'VPN', 'SHOP', 'UNSORTED', 'PRIVATE']
+    
     text = "🌐 **CONFIG CLOUD STATUS**\n\n"
+    
     for cat in order:
         if cat in grouped:
             text += f"📂 **{cat}**\n"
-            for item in grouped[cat]:
+            # Iteramos sobre la lista para saber cuál es el último elemento
+            items = grouped[cat]
+            for i, item in enumerate(items):
+                is_last = (i == len(items) - 1)
+                prefix = "└" if is_last else "├"
+                
                 price_tag = f" - {item['price']}" if item['price'] else ""
-                text += f"{item['status']} {item['name']}{price_tag}\n"
+                text += f"{prefix} {item['status']} {item['name']}{price_tag}\n"
             text += "\n"
-    for cat in grouped:
-        if cat not in order:
-            text += f"📂 **{cat}**\n"
-            for item in grouped[cat]:
-                price_tag = f" - {item['price']}" if item['price'] else ""
-                text += f"{item['status']} {item['name']}{price_tag}\n"
-            text += "\n"
+            
     text += "📝 **Legend:**\n🟢 Working | 🔴 Not Working | 🟠 To Fix\n🔵 Fixed/Updated | 🟣 Remade | ⚪ Checking"
     return text
 
