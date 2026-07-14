@@ -40,6 +40,6 @@ async def handler_bought(event):
     )
     
     try:
-        await event.client.send_message('myConfigCloud', msg, reply_to=3832, link_preview=False, parse_mode='html')
+        await event.client.send_message('myConfigCloud2', msg, reply_to=33, link_preview=False, parse_mode='html')
     except Exception as e:
         await event.respond(f"❌ Error: {str(e)}")
