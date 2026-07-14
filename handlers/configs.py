@@ -124,3 +124,24 @@ async def handler_setinfo(event):
     if len(parts) == 5:
         await db.set_config_info(*parts)
         await event.edit("✅ Info updated.")
+
+async def handler_cfgall(event):
+    if not await can_run_command(event): return
+    args = event.message.text.split()
+    if len(args) < 2:
+        await event.edit("❌ Use: `.cfgall <STATUS>`\nEx: `.cfgall check`")
+        return
+        
+    status_key = args[1].lower()
+    if status_key not in STATUS_MAP:
+        await event.edit("❌ Invalid Status.")
+        return
+        
+    new_emoji = STATUS_MAP[status_key]
+    
+    # Actualizamos todas las filas de la DB
+    async with db.pool.acquire() as conn:
+        await conn.execute("UPDATE configs SET status = $1", new_emoji)
+        
+    await event.edit(f"✅ All configs updated to {new_emoji}.")
+    await sync_list_message(event)        
