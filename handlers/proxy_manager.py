@@ -19,7 +19,7 @@ async def handler_addproxy(event):
             await response.respond(f"📦 Successfully added {len(codes)} codes! Total in stock: {total_proxies}")
             
             try:
-                await event.client.send_message('myConfigCloud', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", reply_to=3832, link_preview=False, parse_mode='html')
+                await event.client.send_message('myConfigCloud2', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", reply_to=33, link_preview=False, parse_mode='html')
             except Exception as e:
                 await response.respond(f"⚠️ Added but failed to notify group: {e}")
             

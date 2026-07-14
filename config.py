@@ -12,7 +12,7 @@ FREE_CRYPTO_API_TOKEN = "4hgzw1dnorurolqkpcg1"
 OB_URL = "https://cloudfig10-001-site1.ktempurl.com/top"
 OB_SECRET = "ZjBmYjQ2ZTdiMmRiZTdmYzAxNjY1Nzc1MjVkNGNlY2JjYmU3NWQwYjNiNGIzMWU0MTVlYTcxMWM5MmY3MWRkNmQzMzU1MjYzOGY4OWZjMjg2NzlhMjg1ZjZhMTEyOWZmMmJiZjYyMGM1Y2VhMjMwMDE3YzdmODJiNGJjM2RmN2Q="
 
-TARGET_GROUP = 'myConfigCloud'
+TARGET_GROUP = 'myConfigCloud2'
 MY_USER_LINK = 'https://t.me/whois_tyler'
 STICKER_FILENAME = 'sticker.tgs'
 GUIDE_FILENAME = 'guide.jpg'
