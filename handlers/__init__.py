@@ -24,7 +24,7 @@ from .queue_system import (
 )
 
 from .configs import (
-    handler_cfglist,
+    handler_cfgsync,
     handler_addcfg,
     handler_delcfg,
     handler_cfgstatus,
@@ -82,7 +82,7 @@ def register_all_handlers(client):
     client.add_event_handler(handler_paylist, events.NewMessage(outgoing=True, pattern=r'(?i)\.paylist'))
     client.add_event_handler(handler_paycheck, events.NewMessage(outgoing=True, pattern=r'(?i)\.paycheck\s+(.*)'))
 
-    client.add_event_handler(handler_cfglist, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfglist$'))
+    client.add_event_handler(handler_cfgsync, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgsync$'))
     client.add_event_handler(handler_addcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.addcfg\s+(.*)'))
     client.add_event_handler(handler_delcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.delcfg\s+(.*)'))
     client.add_event_handler(handler_cfgstatus, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgstatus\s+(.*)'))

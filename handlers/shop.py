@@ -12,6 +12,10 @@ from binance_api import get_coin_price, get_deposit_address, verify_payment
 WAITING_FOR_TXID = {}
 
 async def reply_or_edit(event, text, **kwargs):
+    # Si no se envía un parse_mode específico, forzamos HTML por defecto
+    if 'parse_mode' not in kwargs:
+        kwargs['parse_mode'] = 'html'
+        
     if event.out:
         await event.edit(text, **kwargs)
     else:

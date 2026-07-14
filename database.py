@@ -13,9 +13,8 @@ class Database:
                 url_clean = self.db_url.split('?')[0]
                 self.pool = await asyncpg.create_pool(url_clean, ssl='require')
                 await self.init_tables()
-                print("✅ Database Connected")
             except Exception as e:
-                print(f"❌ DATABASE ERROR: {e}")
+                pass
 
     async def init_tables(self):
         async with self.pool.acquire() as conn:
@@ -95,76 +94,14 @@ class Database:
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-
-            count = await conn.fetchval("SELECT COUNT(*) FROM configs")
-            if count == 0:
-                print("⚙️ Insertando lista inicial de Configs...")
-                initial_data = [
-                    ('STREAMING', 'AMCTheatres', ''), ('STREAMING', 'Allente', ''), ('STREAMING', 'Bally Sports', ''),
-                    ('STREAMING', 'Britbox', ''), ('STREAMING', 'Crunchyroll', ''), ('STREAMING', 'Curiosity Stream', ''),
-                    ('STREAMING', 'Dazn (Ask me for TLS!)', ''), ('STREAMING', 'DirecTV Stream + DirecTV AT&T', ''),
-                    ('STREAMING', 'Disney+', ''), ('STREAMING', 'FloSports', ''), ('STREAMING', 'Fox', ''),
-                    ('STREAMING', 'FuboTV + FuboTV TLS', ''), ('STREAMING', 'Hulu VM', ''), ('STREAMING', 'ITVX', ''),
-                    ('STREAMING', 'MLB', ''), ('STREAMING', 'Marcus Theatres', ''), ('STREAMING', 'NBA League Pass', ''),
-                    ('STREAMING', 'NFL + NFL Gamepass', ''), ('STREAMING', 'NHL TV', ''), ('STREAMING', 'Peacock', ''),
-                    ('STREAMING', 'PlexTV', ''), ('STREAMING', 'PluralSight', ''), ('STREAMING', 'Pureflix', ''),
-                    ('STREAMING', 'Rakuten TV', ''), ('STREAMING', 'Season4U', ''), ('STREAMING', 'Shudder', ''),
-                    ('STREAMING', 'SportTV', ''), ('STREAMING', 'Starz', ''), ('STREAMING', 'Tennis TV', ''),
-                    ('STREAMING', 'UFC', ''), ('STREAMING', 'VSiN Sports', ''), ('STREAMING', 'Viki Rakuten', ''),
-                    ('STREAMING', 'WWE-Network', ''),
-
-                    ('GAMING', 'ABYA (GeForceNOW)', ''), ('GAMING', 'GeoGuessr', ''), ('GAMING', 'Steam', ''),
-                    ('GAMING', 'Ubisoft Connect', ''), ('GAMING', 'XBOX+Outlook', ''),
-
-                    ('EDUCATION', 'BentBox', ''), ('EDUCATION', 'Codecademy', ''), ('EDUCATION', 'Chegg', ''),
-                    ('EDUCATION', 'Chordify', ''), ('EDUCATION', 'Crehana', ''), ('EDUCATION', 'Domestika', ''),
-                    ('EDUCATION', 'Front-End Masters', ''), ('EDUCATION', 'GetAbstract', ''), ('EDUCATION', 'Magoosh', ''),
-                    ('EDUCATION', 'Masterclass', ''), ('EDUCATION', 'Mimo', ''), ('EDUCATION', 'Mindvalley', ''),
-                    ('EDUCATION', 'Mubi', ''), ('EDUCATION', 'Quizlet', ''), ('EDUCATION', 'RealVision', ''),
-                    ('EDUCATION', 'Storytel', ''), ('EDUCATION', 'Studocu', ''), ('EDUCATION', 'Study Mode', ''),
-                    ('EDUCATION', 'Symbolab', ''), ('EDUCATION', 'Transtutors', ''), ('EDUCATION', 'Ultimate Guitar', ''),
-                    ('EDUCATION', 'Yousician', ''),
-
-                    ('ADULT', 'Flingster', ''), ('ADULT', 'Nubiles Porn', ''), ('ADULT', 'Pornhub', ''),
-                    ('ADULT', 'VR Porn', ''), ('ADULT', 'XVideos', ''),
-
-                    ('FOOD', '&Pizza', ''), ('FOOD', 'Chopt', ''), ('FOOD', 'Dasher Direct', ''),
-                    ('FOOD', 'Del Taco', ''), ('FOOD', 'Dominos CA', ''), ('FOOD', 'FoodHub', ''),
-                    ('FOOD', 'MakeItCount', ''), ('FOOD', 'Maverik Rewards', ''), ('FOOD', 'PedidosYa', ''),
-                    ('FOOD', 'PizzaHut USA', ''), ('FOOD', 'Safeway', ''), ('FOOD', 'ShakeShack', ''),
-                    ('FOOD', 'Shipt', ''), ('FOOD', 'Wingstop', ''),
-
-                    ('VPN', 'CactusVPN', ''), ('VPN', 'DotVPN', ''), ('VPN', 'IPVanish', ''),
-                    ('VPN', 'Malwarebytes', ''), ('VPN', 'Mullvad VPN', ''), ('VPN', 'TunnelBear', ''),
-                    ('VPN', 'VyprVPN', ''), ('VPN', 'Windscribe (App Version Error)', ''),
-
-                    ('SHOP', "Arc'teryx", ''), ('SHOP', 'Engelhorn.de', ''), ('SHOP', 'Farfetch', ''),
-                    ('SHOP', 'Fashion Nova', ''), ('SHOP', 'FashionDays', ''), ('SHOP', 'Fitbit', ''),
-                    ('SHOP', 'Guitar Center', ''), ('SHOP', 'PlayOn', ''), ('SHOP', 'RackRoom Shoes', ''),
-                    ('SHOP', 'SSense', ''), ('SHOP', 'Tanguay', ''),
-
-                    ('UNSORTED', 'AhRefs', ''), ('UNSORTED', 'BetterMe', ''), ('UNSORTED', 'Calm', ''),
-                    ('UNSORTED', 'Codefinity', ''), ('UNSORTED', 'Coohom', ''), ('UNSORTED', 'Evernote', ''),
-                    ('UNSORTED', 'FakeYou', ''), ('UNSORTED', 'Figma', ''), ('UNSORTED', 'Headspace', ''),
-                    ('UNSORTED', 'InVideo', ''), ('UNSORTED', 'Kismia Dating', ''), ('UNSORTED', 'Lenme', ''),
-                    ('UNSORTED', 'Let\'s Enhance', ''), ('UNSORTED', 'Mail VM', ''), ('UNSORTED', 'Meditopia', ''),
-                    ('UNSORTED', 'MLB Ballpark', ''), ('UNSORTED', 'Napster', ''), ('UNSORTED', 'Onedrive + File Filter', ''),
-                    ('UNSORTED', 'Outlook (Hotmail)', ''), ('UNSORTED', 'Outlook (Hotmail) Inbox Searcher', ''),
-                    ('UNSORTED', 'Palia', ''), ('UNSORTED', 'Quillbot', ''), ('UNSORTED', 'RealTrends', ''),
-                    ('UNSORTED', 'Soundtrap', ''), ('UNSORTED', 'Speechify', ''), ('UNSORTED', 'TradingView', ''),
-                    ('UNSORTED', 'Viki K-Drama', ''), ('UNSORTED', 'Windstream', ''), ('UNSORTED', 'YCharts', ''),
-                    ('UNSORTED', 'eHarmony Dating', ''),
-
-                    ('PRIVATE', 'Roblox (TLS)', '$200 USD'), ('PRIVATE', 'American Airlines', '$250 USD'),
-                    ('PRIVATE', 'Hollister & Co', '$60 USD'), ('PRIVATE', 'StripChat (CapSolver)', '$100 USD'),
-                    ('PRIVATE', 'REWE (Only Login / Capsolver)', '$25 USD'), ('PRIVATE', 'Degoo Storage Cloud', '$250 USD'),
-                    ('PRIVATE', 'ShopLC', '$100 USD'), ('PRIVATE', 'E-Bank Patagonia', '$300 USD'),
-                    ('PRIVATE', 'Wall Street Journal', '$75 USD'), ('PRIVATE', 'NYTimes', '$75 USD')
-                ]
-                await conn.executemany(
-                    "INSERT INTO configs (category, name, price) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    initial_data
-                )
+            
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS config_list_messages (
+                    chat_id BIGINT PRIMARY KEY,
+                    message_id INT,
+                    topic_id INT
+                );
+            """)
 
     async def get_product(self, key):
         if not self.pool: return None
@@ -445,10 +382,38 @@ class Database:
             """, order_id, str(tx_id), user_id, product_key, amount_usd, symbol, status)
 
     async def is_txid_used(self, tx_id):
-        if not self.pool: return True # Si no hay DB, bloqueamos por seguridad
+        if not self.pool: return True
         async with self.pool.acquire() as conn:
-            # Buscamos si existe alguna orden exitosa con este tx_id
             row = await conn.fetchrow("SELECT order_id FROM orders WHERE oxapay_track_id = $1", str(tx_id))
             return row is not None
+
+    async def update_gb_stats(self, amount):
+        if not self.pool: return 0
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("""
+                INSERT INTO stats (key, value) VALUES ('total_gb', $1)
+                ON CONFLICT (key) DO UPDATE SET value = stats.value + $1
+                RETURNING value
+            """, amount)
+
+    async def get_gb_stats(self):
+        if not self.pool: return 0
+        async with self.pool.acquire() as conn:
+            res = await conn.fetchval("SELECT value FROM stats WHERE key = 'total_gb'")
+            return res if res is not None else 0
+
+    async def set_list_message(self, chat_id, message_id, topic_id=None):
+         if not self.pool: return
+         async with self.pool.acquire() as conn:
+             await conn.execute("""
+                 INSERT INTO config_list_messages (chat_id, message_id, topic_id) 
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (chat_id) DO UPDATE SET message_id = $2, topic_id = $3
+             """, chat_id, message_id, topic_id)
+
+    async def get_list_message(self, chat_id):
+         if not self.pool: return None
+         async with self.pool.acquire() as conn:
+             return await conn.fetchrow("SELECT message_id, topic_id FROM config_list_messages WHERE chat_id = $1", chat_id)
 
 db = Database()

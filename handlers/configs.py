@@ -1,91 +1,82 @@
 from telethon import events
 from database import db
+from handlers.utils import can_run_command
 
-# MAPA DE ESTADOS (Colores)
 STATUS_MAP = {
-    'working': '🟢',
-    'ok': '🟢',
-    'fix': '🟠',
-    'needsfix': '🟠',
-    'updated': '🔵',
-    'fixed': '🔵',
-    'dead': '🔴',
-    'rip': '🔴',
-    'checking': '⚪',
-    'check': '⚪',
-    'remade': '🟣',
-    'new': '🟣'
+    'working': '🟢', 'ok': '🟢',
+    'fix': '🟠', 'needsfix': '🟠',
+    'updated': '🔵', 'fixed': '🔵',
+    'dead': '🔴', 'rip': '🔴',
+    'checking': '⚪', 'check': '⚪',
+    'remade': '🟣', 'new': '🟣'
 }
 
-# --- 1. COMANDO .CFGLIST (La lista maestra) ---
-async def handler_cfglist(event):
-    if not event.out: return
-
+async def generate_config_list_text():
     configs = await db.get_all_configs()
+    if not configs: return "📁 **Config List is Empty**"
     
-    if not configs:
-        await event.edit("📭 **No configs found.** Use `.addcfg` to add one.")
-        return
-
-    # Agrupar por categorías
     grouped = {}
     for conf in configs:
         cat = conf['category']
-        if cat not in grouped:
-            grouped[cat] = []
+        if cat not in grouped: grouped[cat] = []
         grouped[cat].append(conf)
-
-    # Orden de visualización preferido
+        
     order = ['STREAMING', 'GAMING', 'EDUCATION', 'ADULT', 'FOOD', 'VPN', 'SHOP', 'UNSORTED', 'PRIVATE']
     
-    # Primero borramos el mensaje del comando ".cfglist"
-    await event.delete()
-
-    # Enviamos un mensaje por cada categoría para que no sea un bloque gigante
+    text = "🌐 **CONFIG CLOUD STATUS**\n\n"
+    
     for cat in order:
         if cat in grouped:
-            msg = f"📂 **{cat} CONFIGS**\n\n"
-            for conf in grouped[cat]:
-                price_tag = f" - {conf['price']}" if conf['price'] else ""
-                msg += f"{conf['status']} {conf['name']}{price_tag}\n"
+            text += f"📂 **{cat}**\n"
+            for item in grouped[cat]:
+                price_tag = f" - {item['price']}" if item['price'] else ""
+                text += f"{item['status']} {item['name']}{price_tag}\n"
+            text += "\n"
             
-            # Enviar mensaje al chat
-            await event.respond(msg)
-    
-    # Enviar las categorías que no estén en la lista de orden (personalizadas)
     for cat in grouped:
         if cat not in order:
-            msg = f"📂 **{cat} CONFIGS**\n\n"
-            for conf in grouped[cat]:
-                price_tag = f" - {conf['price']}" if conf['price'] else ""
-                msg += f"{conf['status']} {conf['name']}{price_tag}\n"
-            await event.respond(msg)
+            text += f"📂 **{cat}**\n"
+            for item in grouped[cat]:
+                price_tag = f" - {item['price']}" if item['price'] else ""
+                text += f"{item['status']} {item['name']}{price_tag}\n"
+            text += "\n"
+            
+    text += "📝 **Legend:**\n🟢 Working | 🔴 Not Working | 🟠 To Fix\n🔵 Fixed/Updated | 🟣 Remade | ⚪ Checking"
+    return text
 
+async def sync_list_message(event):
+    chat_id = event.chat_id
+    msg_data = await db.get_list_message(chat_id)
+    new_text = await generate_config_list_text()
+    
+    if msg_data:
+        try:
+            await event.client.edit_message(chat_id, msg_data['message_id'], new_text, parse_mode='markdown')
+            return True
+        except: pass
+            
+    reply_to = event.message.reply_to_msg_id if event.is_reply else None
+    sent_msg = await event.client.send_message(chat_id, new_text, reply_to=reply_to, parse_mode='markdown')
+    await db.set_list_message(chat_id, sent_msg.id)
 
-# --- 2. COMANDO .ADDCFG ---
+async def handler_cfgsync(event):
+    if not await can_run_command(event): return
+    await sync_list_message(event)
+    await event.delete()
+
 async def handler_addcfg(event):
-    # Sintaxis: .addcfg <GROUP> <NAME> [PRICE]
-    # Ej: .addcfg STREAMING Disney+
-    # Ej: .addcfg PRIVATE Roblox $200
-    if not event.out: return
-
+    if not await can_run_command(event): return
     args = event.message.text.split(maxsplit=2)
     if len(args) < 3:
         await event.edit("❌ Use: `.addcfg <GROUP> <NAME> [PRICE]`\nEx: `.addcfg STREAMING Disney+`")
         return
 
     category = args[1].upper()
-    
-    # Manejar precio opcional
     remaining = args[2]
-    # Si el usuario puso precio, intentamos separarlo. 
-    # Estrategia: Si hay un espacio al final, asumimos que lo último es el precio si tiene $ o USD
     parts = remaining.rsplit(' ', 1)
-    
     name = remaining
     price = ""
 
-    # Detección simple de precio
     if len(parts) > 1:
         possible_price = parts[1]
         if '$' in possible_price or 'USD' in possible_price.upper() or possible_price.isdigit():
@@ -94,15 +85,12 @@ async def handler_addcfg(event):
 
     if await db.add_config(category, name, price):
         await event.edit(f"✅ Added **{name}** to **{category}**.")
+        await sync_list_message(event)
     else:
-        await event.edit(f"❌ Error. Maybe **{name}** already exists in **{category}**?")
+        await event.edit(f"❌ Error.")
 
-
-# --- 3. COMANDO .DELCFG ---
 async def handler_delcfg(event):
-    # Sintaxis: .delcfg <GROUP> <NAME>
-    if not event.out: return
-
+    if not await can_run_command(event): return
     args = event.message.text.split(maxsplit=2)
     if len(args) < 3:
         await event.edit("❌ Use: `.delcfg <GROUP> <NAME>`")
@@ -113,58 +101,46 @@ async def handler_delcfg(event):
 
     if await db.del_config(category, name):
         await event.edit(f"🗑 Deleted **{name}** from **{category}**.")
+        await sync_list_message(event)
     else:
-        await event.edit(f"❌ Config **{name}** not found in **{category}**.")
+        await event.edit(f"❌ Config not found.")
 
-
-# --- 4. COMANDO .CFGSTATUS ---
 async def handler_cfgstatus(event):
-    # Sintaxis: .cfgstatus <GROUP> <NAME> <STATUS>
-    # STATUS puede ser: working, fix, dead, check, updated, remade
-    if not event.out: return
-
+    if not await can_run_command(event): return
     args = event.message.text.split()
     if len(args) < 4:
-        # Nota: Asumimos que el ÚLTIMO argumento es el status.
-        await event.edit(
-            "❌ Use: `.cfgstatus <GROUP> <NAME> <STATUS>`\n"
-            "Status: working, fix, dead, check, updated, remade"
-        )
+        await event.edit("❌ Use: `.cfgstatus <GROUP> <NAME> <STATUS>`")
         return
 
     category = args[1]
-    status_key = args[-1].lower() # La última palabra es el estado
-    
-    # El nombre es todo lo que hay entre la categoría y el status
+    status_key = args[-1].lower()
     name = " ".join(args[2:-1]) 
 
     if status_key not in STATUS_MAP:
-        await event.edit("❌ Invalid Status. Use: working, fix, dead, check, updated, remade")
+        await event.edit("❌ Invalid Status.")
         return
 
     new_emoji = STATUS_MAP[status_key]
 
     if await db.update_config_status(category, name, new_emoji):
-        await event.edit(f"✅ Status updated for **{name}**: {new_emoji}")
+        await event.edit(f"✅ Status updated.")
+        await sync_list_message(event)
     else:
-        await event.edit(f"❌ Config **{name}** not found in **{category}**.")
+        await event.edit(f"❌ Config not found.")
 
-
-# --- 5. COMANDO .EDITCFG (Precio) ---
 async def handler_editcfg(event):
-    # Sintaxis: .editcfg <GROUP> <NAME> <NEW_PRICE>
-    if not event.out: return
-
+    if not await can_run_command(event): return
     args = event.message.text.split()
     if len(args) < 4:
         await event.edit("❌ Use: `.editcfg <GROUP> <NAME> <PRICE>`")
         return
 
     category = args[1]
-    price = args[-1] # Último arg es el precio
+    price = args[-1]
     name = " ".join(args[2:-1])
 
     if await db.update_config_price(category, name, price):
-        await event.edit(f"✅ Price updated for **{name}**: {price}")
+        await event.edit(f"✅ Price updated.")
+        await sync_list_message(event)
     else:
-        await event.edit(f"❌ Config **{name}** not found.")
+        await event.edit(f"❌ Config not found.")
