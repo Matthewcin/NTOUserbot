@@ -8,16 +8,8 @@ from telethon import events
 import config
 from database import db
 
-# ==========================================
-# 🛠️ HERRAMIENTAS INTERNAS
-# ==========================================
-
 def _api_request(method, endpoint, data=None):
-    """
-    Se comunica con la API de OB usando TU LLAVE MAESTRA.
-    """
     url = f"{config.OB_URL}/api/{endpoint}"
-    # Aquí se inyecta tu llave maestra ZjBmYj... definida en config.py
     headers = {
         "Authorization": config.OB_SECRET, 
         "Content-Type": "application/json"
@@ -41,7 +33,6 @@ def mask_text(text, visible_start=4, visible_end=4):
     return f"{s[:visible_start]}••••{s[-visible_end:]}"
 
 def generate_sb_key(username):
-    # Lógica de encriptación basada en tu config de SilverBullet
     a2 = username.upper().replace(" ", "-")
     raw_b = f"{a2}-hashsecurity"
     b_b64 = base64.b64encode(raw_b.encode('utf-8')).decode('utf-8')
@@ -68,10 +59,6 @@ async def generate_qr_message(event, address, network, amount_text, is_preview=F
     if is_preview: caption = "🔍 <b>PREVIEW MODE</b>\n\n" + caption
     await event.client.send_file(target, bio, caption=caption, parse_mode='html')
 
-# ==========================================
-# 👮‍♂️ HANDLERS DE ADMIN
-# ==========================================
-
 async def handler_secret_menu(event):
     await event.delete()
     await event.client.send_message("me", 
@@ -86,8 +73,6 @@ async def handler_secret_menu(event):
         "🔸 <code>.paylist</code> » List Wallets", 
         parse_mode='html')
 
-# --- OB HANDLERS (CORREGIDO BASADO EN TU C#) ---
-
 async def handler_generate(event):
     if not event.out: return
     args = event.pattern_match.group(1)
@@ -100,20 +85,15 @@ async def handler_generate(event):
     generated_key = generate_sb_key(username)
     masked_key = mask_text(generated_key, 10, 8)
 
-    # 👇 FIX: Payload limpio basado en tu código C#
-    # Quitamos username y password. Solo Key, Groups, IPs.
     payload = {
         "key": generated_key,
         "groups": [],
-        "iPs": ["0.0.0.0"] # Array de IPs como en el C#
+        "iPs": ["0.0.0.0"]
     }
     
-    # Usamos POST a /api/users para crear (AddUser)
     response, status = _api_request('POST', "users", payload)
 
-    # Si POST falla (405 Method Not Allowed), intentamos el fallback con PUT
     if status not in [200, 201, 204]:
-        # Fallback: PUT directo a la key
         response, status = _api_request('PUT', f"users/{generated_key}", payload)
 
     status_icon = "✅" if status in [200, 201, 204] else "⚠️"
@@ -145,10 +125,9 @@ async def handler_addgroup(event):
     
     current_groups.append(group_name)
     
-    # Mantenemos estructura limpia
     update_payload = {
         "key": api_key,
-        "iPs": user_data.get('iPs', []), # Respetamos mayuscula/minuscula de la API respuesta
+        "iPs": user_data.get('iPs', []),
         "groups": current_groups
     }
     
@@ -190,8 +169,10 @@ async def handler_apicheck(event):
     await event.delete()
     if not api_key: return await event.respond("❌ Usage: `.apicheck [KEY]`")
     
+    api_key = api_key.strip()
+    
     user_data, status = _api_request('GET', f"users/{api_key}")
-    if status != 200: return await event.respond("❌ Key not found on Server.")
+    if status != 200: return await event.respond(f"❌ Key not found on Server (Code: {status}).")
     
     db_user_id = None
     cooldown_info = "Unknown"
@@ -203,7 +184,6 @@ async def handler_apicheck(event):
             cooldown_info = "✅ Ready" if can_change is True else f"⏳ {can_change}"
 
     ips = user_data.get('iPs', [])
-    # Proteccion si ips es null
     if ips is None: ips = []
 
     msg = (f"🕵️‍♂️ <b>INFO (CENSORED)</b>\n"
@@ -215,7 +195,6 @@ async def handler_apicheck(event):
     
     await event.respond(msg, parse_mode='html')
 
-# --- CRYPTO HANDLERS ---
 async def handler_pay(event):
     if not event.out: return
     args = event.pattern_match.group(1)
@@ -266,7 +245,6 @@ async def handler_paylist(event):
     for w in wallets: msg += f"🔹 <b>{w['symbol']}</b> ({w['network']})\n   <code>{w['address']}</code>\n\n"
     await event.client.send_message("me", msg, parse_mode='html')
 
-# --- SHOP & WARN ---
 async def handler_add(event):
     if not event.out: return
     try:
