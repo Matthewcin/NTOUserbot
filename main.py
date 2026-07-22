@@ -26,7 +26,7 @@ async def main():
     print("🚀 4. Login to Telegram...")
     await client.start()
     
-    try: await client.send_message("me", "🚀 **SYSTEM ONLINE (Split Version 10.0)**")
+    try: await client.send_message("me", "🚀 **SYSTEM ONLINE (Split Version 100.0)**")
     except: pass
     
     print("✅ BOT IS RUNNING!")

@@ -1,7 +1,7 @@
 from telethon import events
 from database import db
 
-AUTHORIZED_IDS = [5632906275, 934491540]
+AUTHORIZED_IDS = [5632906275, 934491540, 8863568013]
 
 async def handler_addproxy(event):
     if event.sender_id not in AUTHORIZED_IDS:

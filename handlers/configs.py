@@ -23,7 +23,7 @@ async def generate_config_list_text():
         
     order = ['STREAMING', 'GAMING', 'EDUCATION', 'ADULT', 'FOOD', 'VPN', 'SHOP', 'UNSORTED', 'PRIVATE']
     
-    text = "🌐 **CONFIG CLOUD STATUS**\n\n"
+    text = "🌐 **CONFIG CLOUD DYNAMIC LIST**\n\n"
     
     for cat in order:
         if cat in grouped:
@@ -110,15 +110,53 @@ async def handler_editcfg(event):
 
 async def handler_cfg_info(event):
     if not await can_run_command(event): return
+    
     args = event.message.text.split(maxsplit=1)
-    if len(args) < 2: return
-    conf = await db.get_config_by_name(args[1].strip())
-    if not conf: return
+    if len(args) < 2:
+        msg = await event.reply("❌ **Usage:** `.cfg [Config Name]`\nEx: `.cfg Disney+`")
+        if event.out: await event.delete()
+        return
+
+    search_term = args[1].strip()
+    conf = await db.get_config_by_name(search_term)
+    
+    if not conf:
+        msg = await event.reply(f"❌ Config not found for: `{search_term}`")
+        if event.out: await event.delete()
+        return
+
+    # Lógica para convertir "captura1, captura 2, captura 3" en árbol
+    raw_capture = conf.get('capture', 'None')
+    capture_tree = ""
+    if raw_capture and raw_capture != 'None':
+        # Separamos por coma y limpiamos espacios
+        captures = [c.strip() for c in raw_capture.split(',')]
+        for i, cap in enumerate(captures):
+            prefix = "└" if (i == len(captures) - 1) else "├"
+            capture_tree += f"\n  {prefix} {cap}"
+    else:
+        capture_tree = " None"
+
     updated_str = conf['updated_at'].strftime("%Y-%m-%d") if conf.get('updated_at') else "Unknown"
-    msg = (f"⚙️ **CONFIG INFO**\n🏷️ **Name:** `{conf['name']}`\n📊 **Status:** {conf['status']}\n\n"
-           f"📑 **Capture:** {conf.get('capture', 'None')}\n🔒 **TLS:** {conf.get('requires_tls', 'No')}\n"
-           f"🌐 **Proxies:** {conf.get('proxies_admitted', 'Any')}\n📅 **Update:** {updated_str}")
-    await event.reply(msg)
+
+    msg = (
+        f"⚙️ **CONFIG INFORMATION**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏷️ **Name:** `{conf['name']}`\n"
+        f"📂 **Category:** {conf['category']}\n"
+        f"📊 **Status:** {conf['status']}\n"
+        f"🛒 **Price:** {conf['price'] if conf['price'] else 'Included in Cloud'}\n\n"
+        f"📑 **Capture:** {capture_tree}\n\n"
+        f"🔒 **Requires TLS:** {conf.get('requires_tls', 'No')}\n"
+        f"📜 **Login Rules:** {conf.get('login_rules', 'None')}\n"
+        f"🌐 **Proxies Admitted:** {conf.get('proxies_admitted', 'Any')}\n\n"
+        f"📅 **Latest Update:** {updated_str}\n"
+    )
+
+    if event.out:
+        await event.edit(msg)
+    else:
+        await event.reply(msg)
 
 async def handler_setinfo(event):
     if not await can_run_command(event): return
