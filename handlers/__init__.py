@@ -28,7 +28,8 @@ from .configs import (
     handler_addcfg,
     handler_delcfg,
     handler_cfgstatus,
-    handler_editcfg
+    handler_editcfg,
+    handler_cfgsync
 )
 
 from .weekend import handler_weekend_autoresponder
