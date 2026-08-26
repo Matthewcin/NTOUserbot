@@ -28,29 +28,35 @@ async def handler_addproxy(event):
     event.client.add_event_handler(capture_proxies, events.NewMessage(from_users=event.sender_id))
 
 async def handler_giveproxy(event):
-    if event.sender_id not in AUTHORIZED_IDS:
+    match = event.pattern_match
+    if not match or len(match.groups()) < 1:
+        msg = await event.reply("❌ **Usage:** `.giveproxy <NUMBER>`")
+        if event.out: await event.delete()
         return
-    
+
     try:
-        args = event.pattern_match.group(1)
-        count = int(args) if args else 1
+        count = int(match.group(1).strip())
+        proxies = await db.get_and_remove_proxies(count)
         
-        total_available = await db.get_proxies_count()
-        if total_available < count:
-            await event.respond(f"❌ Not enough proxies! Only {total_available} available.")
+        if not proxies:
+            error_msg = "❌ **No proxies available in database.**"
+            if event.out:
+                await event.edit(error_msg)
+            else:
+                await event.reply(error_msg)
             return
             
-        given = await db.get_and_remove_proxies(count)
+        result_text = "\n".join(proxies)
+        success_msg = f"✅ **Here are your {count} proxies:**\n\n`{result_text}`"
         
-        code_str = "\n".join([f"`{c}`" for c in given])
-        
-        msg = (
-            f"Here's your {count} GB of Premium Residential Proxies!\n"
-            f"[To claim them please register here](https://proxy.sb/?ref=YMMZ2D49)\n\n"
-            f"then go to https://proxy.sb/dashboard/claim and there you can claim your {count} Codes:\n\n"
-            f"{code_str}"
-        )
-        
-        await event.respond(msg, parse_mode='md')
+        if event.out:
+            await event.edit(success_msg)
+        else:
+            await event.reply(success_msg)
+            
+    except ValueError:
+        msg = await event.reply("❌ **Error:** Please provide a valid number.")
+        if event.out: await event.delete()
     except Exception as e:
-        await event.respond(f"❌ Error: {e}")
+        msg = await event.reply(f"❌ **Error:** {str(e)}")
+        if event.out: await event.delete()
