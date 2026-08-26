@@ -12,6 +12,8 @@ from binance_api import get_coin_price, get_deposit_address, verify_payment
 WAITING_FOR_TXID = {}
 
 async def reply_or_edit(event, text, **kwargs):
+    # Forzamos HTML por defecto si no se especifica otro parse_mode
+    kwargs.setdefault('parse_mode', 'html')
     if event.out:
         await event.edit(text, **kwargs)
     else:
@@ -23,7 +25,9 @@ async def handler_list(event):
     try:
         async with db.pool.acquire() as conn:
             rows = await conn.fetch("SELECT key_name, display_name, price_usd FROM products")
-        if not rows: await reply_or_edit(event, "📂 <b>EMPTY CATALOG</b>"); return
+        if not rows: 
+            await reply_or_edit(event, "📂 <b>EMPTY CATALOG</b>")
+            return
         
         msg = "🛒 <b>AVAILABLE PRODUCTS</b>\n\n"
         for row in rows:
@@ -36,11 +40,15 @@ async def handler_list(event):
 async def handler_info(event):
     if not await can_run_command(event): return
     args = event.message.text.split()
-    if len(args) < 2: await reply_or_edit(event, "ℹ️ Usage: <code>.info [key]</code>"); return
+    if len(args) < 2: 
+        await reply_or_edit(event, "ℹ️ Usage: <code>.info [key]</code>")
+        return
     
     key = args[1].lower().strip()
     product = await db.get_product(key)
-    if not product: await reply_or_edit(event, f"❌ Product <code>{key}</code> not found."); return
+    if not product: 
+        await reply_or_edit(event, f"❌ Product <code>{key}</code> not found.")
+        return
     
     msg = (f"📦 <b>{product['display_name']}</b>\n"
            f"💰 <b>Price:</b> ${product['price_usd']} USD\n"
@@ -53,7 +61,9 @@ async def handler_wallets(event):
     if not await can_run_command(event): return
     async with db.pool.acquire() as conn:
         rows = await conn.fetch("SELECT symbol, network, address FROM wallets ORDER BY symbol, network")
-    if not rows: await reply_or_edit(event, "❌ No wallets configured."); return
+    if not rows: 
+        await reply_or_edit(event, "❌ No wallets configured.")
+        return
     
     grouped = defaultdict(list)
     for r in rows:
@@ -77,7 +87,7 @@ async def handler_buy(event):
 
     args = event.message.text.split()
     if len(args) < 3:
-        await reply_or_edit(event, "❌ <b>Usage:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>", parse_mode='html')
+        await reply_or_edit(event, "❌ <b>Usage:</b> <code>.buy [key] [SYMBOL] [NETWORK]</code>")
         return
     
     product_key, symbol = args[1].lower(), args[2].upper()
@@ -88,7 +98,7 @@ async def handler_buy(event):
         available_nets = await conn.fetch("SELECT network FROM wallets WHERE symbol = $1", symbol)
     
     if not available_nets:
-        await reply_or_edit(event, f"❌ No configuration found for <b>{symbol}</b>.", parse_mode='html')
+        await reply_or_edit(event, f"❌ No configuration found for <b>{symbol}</b>.")
         return
 
     # If multiple networks exist and user didn't select one, show menu
@@ -97,7 +107,7 @@ async def handler_buy(event):
         for row in available_nets:
             net = row['network']
             msg += f"{net}; <code>.buy {product_key} {symbol} {net}</code>\n"
-        await reply_or_edit(event, msg, parse_mode='html')
+        await reply_or_edit(event, msg)
         return
     
     # If only one exists, auto-select it
@@ -105,16 +115,17 @@ async def handler_buy(event):
         network = available_nets[0]['network']
 
     product = await db.get_product(product_key)
-    if not product: await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found.", parse_mode='html'); return
+    if not product: 
+        await reply_or_edit(event, f"❌ Product <code>{product_key}</code> not found.")
+        return
 
     # Get address using validated network
     wallet = await db.get_wallet_by_network(symbol, network)
     if not wallet: 
-        await reply_or_edit(event, f"❌ No wallet configuration found for {symbol} {network}", parse_mode='html')
+        await reply_or_edit(event, f"❌ No wallet configuration found for {symbol} {network}")
         return
     
     address = wallet['address']
-    # If tag is needed, fetch it here or include in wallet table
     tag = wallet.get('tag', "") 
 
     crypto_price = 1.0 if symbol in ['USDT', 'USDC'] else get_coin_price(f"{symbol}USDT")
@@ -152,7 +163,9 @@ async def handler_txid(event):
         await event.reply("✅ Order Cancelled Successfully.")
         return
     
-    if await db.is_txid_used(text): await event.reply("❌ This TXID was already used."); return
+    if await db.is_txid_used(text): 
+        await event.reply("❌ This TXID was already used.")
+        return
 
     msg = await event.respond("🔍 <b>Verifying...</b>", parse_mode='html')
     success, status_msg, received = verify_payment(text, order_info['amount_crypto'], order_info['symbol'])
