@@ -466,4 +466,28 @@ class Database:
         async with self.pool.acquire() as conn:
             res = await conn.fetchval("SELECT value FROM stats WHERE key = 'total_gb'")
             return res if res is not None else 0
+
+async def get_list_message(self, chat_id):
+        """Obtiene el ID del mensaje de la lista para un chat específico."""
+        try:
+            async with self.db.execute("SELECT message_id, topic_id FROM list_messages WHERE chat_id = ?", (chat_id,)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return {'message_id': row[0], 'topic_id': row[1]}
+        except Exception:
+            pass
+        return None
+
+    async def set_list_message(self, chat_id, message_id, topic_id=None):
+        """Guarda o actualiza el ID del mensaje de la lista para un chat."""
+        await self.db.execute(
+            """
+            INSERT INTO list_messages (chat_id, message_id, topic_id) 
+            VALUES (?, ?, ?) 
+            ON CONFLICT(chat_id) DO UPDATE SET message_id = excluded.message_id, topic_id = excluded.topic_id
+            """,
+            (chat_id, message_id, topic_id)
+        )
+        await self.db.commit()
+        
 db = Database()
