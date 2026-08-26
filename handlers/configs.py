@@ -233,17 +233,22 @@ async def handler_editcfg(event):
 # --- 7. COMANDO .CFG (Información detallada con árbol de capturas) ---
 async def handler_cfg_info(event):
     match = event.pattern_match
-    if not match or len(match.groups()) < 1:
-        msg = await event.reply("❌ **Usage:** `.cfg [Config Name]`\nEx: `.cfg Disney+`")
-        if event.out: await event.delete()
+    if not match or not match.group(1):
+        if event.out:
+            await event.edit("❌ **Usage:** `.cfg [Config Name]`\nEx: `.cfg Disney+`")
+        else:
+            await event.reply("❌ **Usage:** `.cfg [Config Name]`\nEx: `.cfg Disney+`")
         return
 
     search_term = match.group(1).strip()
     conf = await db.get_config_by_name(search_term)
     
     if not conf:
-        msg = await event.reply(f"❌ Config not found for: `{search_term}`")
-        if event.out: await event.delete()
+        error_msg = f"❌ Config not found for: `{search_term}`"
+        if event.out:
+            await event.edit(error_msg)
+        else:
+            await event.reply(error_msg)
         return
 
     # Lógica de árbol para las capturas
@@ -277,7 +282,6 @@ async def handler_cfg_info(event):
         await event.edit(msg)
     else:
         await event.reply(msg)
-
 
 # --- 8. COMANDO .SETINFO (Admin para configurar detalles extra) ---
 async def handler_setinfo(event):
