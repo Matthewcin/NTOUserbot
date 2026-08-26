@@ -29,7 +29,8 @@ from .configs import (
     handler_delcfg,
     handler_cfgstatus,
     handler_editcfg,
-    handler_cfgsync
+    handler_cfgsync,
+    handler_cfg_info
 )
 
 from .weekend import handler_weekend_autoresponder
@@ -89,6 +90,7 @@ def register_all_handlers(client):
     client.add_event_handler(handler_cfgstatus, events.NewMessage(outgoing=True, pattern=r'(?i)\.cfgstatus\s+(.*)'))
     client.add_event_handler(handler_editcfg, events.NewMessage(outgoing=True, pattern=r'(?i)\.editcfg\s+(.*)'))
     client.add_event_handler(handler_cfgsync, events.NewMessage(outgoing=True, pattern=r'(?i)^\.cfgsync$'))
+    client.add_event_handler(handler_cfg_info, events.NewMessage(pattern=r'(?i)^\.cfg(?: (.+))?'))
 
     client.add_event_handler(handler_weekend_autoresponder, events.NewMessage(incoming=True))
     
