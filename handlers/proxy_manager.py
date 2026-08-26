@@ -28,17 +28,16 @@ async def handler_addproxy(event):
     event.client.add_event_handler(capture_proxies, events.NewMessage(from_users=event.sender_id))
 
 async def handler_giveproxy(event):
-    if event.sender_id not in AUTHORIZED_IDS:
+    # Si manejas autorización por ID, asegúrate de que tu ID esté incluido en AUTHORIZED_IDS
+    if AUTHORIZED_IDS and event.sender_id not in AUTHORIZED_IDS:
         return
     
     match = event.pattern_match
-    if not match or not match.group(1):
-        msg = await event.reply("❌ **Usage:** `.giveproxy <NUMBER>`")
-        if event.out: await event.delete()
-        return
-
+    # Si escriben solo .giveproxy sin número, asumimos 1 por defecto
+    args = match.group(1).strip() if match and match.group(1) else "1"
+    
     try:
-        count = int(match.group(1).strip())
+        count = int(args)
         
         total_available = await db.get_proxies_count()
         if total_available < count:
@@ -48,7 +47,6 @@ async def handler_giveproxy(event):
             return
             
         given = await db.get_and_remove_proxies(count)
-        
         code_str = "\n".join([f"`{c}`" for c in given])
         
         msg = (
