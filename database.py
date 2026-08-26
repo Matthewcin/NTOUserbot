@@ -467,7 +467,7 @@ class Database:
             res = await conn.fetchval("SELECT value FROM stats WHERE key = 'total_gb'")
             return res if res is not None else 0
 
-async def get_list_message(self, chat_id):
+    async def get_list_message(self, chat_id):
         """Obtiene el ID del mensaje de la lista para un chat específico."""
         try:
             async with self.db.execute("SELECT message_id, topic_id FROM list_messages WHERE chat_id = ?", (chat_id,)) as cursor:
