@@ -96,5 +96,5 @@ def register_all_handlers(client):
     
     client.add_event_handler(handler_bought, events.NewMessage(outgoing=True, pattern=r'(?i)\.bought\s+([^\s]+)\s+(.+)'))
 
-    client.add_event_handler(handler_addproxy, events.NewMessage(pattern=r'\.addproxy'))
-    client.add_event_handler(handler_giveproxy, events.NewMessage(pattern=r'\.giveproxy\s+(.*)'))
+    client.add_event_handler(handler_addproxy, events.NewMessage(pattern=r'(?i)^\.addproxy (.+)'))
+    client.add_event_handler(handler_giveproxy, events.NewMessage(pattern=r'(?i)^\.giveproxy (.+)'))
