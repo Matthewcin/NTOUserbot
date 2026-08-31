@@ -4,9 +4,29 @@ from database import db
 AUTHORIZED_IDS = [5632906275, 934491540]
 
 async def handler_addproxy(event):
-    if event.sender_id not in AUTHORIZED_IDS:
+    if AUTHORIZED_IDS and event.sender_id not in AUTHORIZED_IDS:
         return
         
+    match = event.pattern_match
+    raw_text = match.group(1).strip() if match and match.group(1) else ""
+    
+    # Si pasaron proxies directamente en el mismo mensaje (ej: .addproxy ip:port:user:pass)
+    if raw_text:
+        codes = [c.strip() for c in raw_text.split('\n') if c.strip()]
+        await db.add_proxies(codes)
+        total_proxies = await db.get_proxies_count()
+        
+        success_msg = f"📦 Successfully added {len(codes)} codes! Total in stock: {total_proxies}"
+        if event.out: await event.edit(success_msg)
+        else: await event.respond(success_msg)
+        
+        try:
+            await event.client.send_message('myConfigCloud2', f"🎁 <b>New Stock Alert!</b> {len(codes)} new Proxy codes have been added. Get yours now!", reply_to=33, link_preview=False, parse_mode='html')
+        except Exception:
+            pass
+        return
+
+    # Si solo escribieron .addproxy, pedimos el listado esperando la respuesta
     await event.respond("✅ Send the list of proxy codes now (one per line):")
 
     async def capture_proxies(response):
@@ -28,12 +48,10 @@ async def handler_addproxy(event):
     event.client.add_event_handler(capture_proxies, events.NewMessage(from_users=event.sender_id))
 
 async def handler_giveproxy(event):
-    # Si manejas autorización por ID, asegúrate de que tu ID esté incluido en AUTHORIZED_IDS
     if AUTHORIZED_IDS and event.sender_id not in AUTHORIZED_IDS:
         return
     
     match = event.pattern_match
-    # Si escriben solo .giveproxy sin número, asumimos 1 por defecto
     args = match.group(1).strip() if match and match.group(1) else "1"
     
     try:
